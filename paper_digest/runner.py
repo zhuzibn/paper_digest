@@ -4,8 +4,10 @@ import logging
 
 from paper_digest.config import Config, STATE_FILE, get_config
 from paper_digest.emailer import Emailer
+from paper_digest.fetchers.aps_prl_rss import ApsPrlRssFetcher
 from paper_digest.fetchers.arxiv import ArxivFetcher
 from paper_digest.fetchers.nature import NatureFetcher
+from paper_digest.fetchers.nature_journal_rss import NatureJournalRssFetcher
 from paper_digest.models import Paper
 from paper_digest.storage import PaperStorage
 
@@ -16,7 +18,12 @@ def run_digest(config: Config) -> int:
     try:
         storage = PaperStorage(STATE_FILE)
         emailer = Emailer(config)
-        fetchers = [ArxivFetcher(config), NatureFetcher(config)]
+        fetchers = [
+            ArxivFetcher(config),
+            NatureFetcher(config),
+            ApsPrlRssFetcher(config),
+            NatureJournalRssFetcher(config),
+        ]
 
         all_papers: list[Paper] = []
         for fetcher in fetchers:

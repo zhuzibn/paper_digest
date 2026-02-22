@@ -1,14 +1,13 @@
 # pyright: reportMissingImports=false, reportUnknownVariableType=false, reportUnknownParameterType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false
 
 import logging
-import re
 from urllib.parse import urljoin
 
 import requests
 from bs4 import BeautifulSoup
-from dateutil import parser as date_parser
 
 from paper_digest.config import Config
+from paper_digest.fetchers.common import match_keywords, normalize_date
 from paper_digest.models import Paper
 
 logger = logging.getLogger(__name__)
@@ -93,14 +92,7 @@ class NatureFetcher:
     def _match_keywords(
         self, title: str, keywords: list[str], summary: str = ""
     ) -> list[str]:
-        content = f"{title} {summary}".lower()
-        return [kw for kw in keywords if kw.lower() in content]
+        return match_keywords(f"{title} {summary}", keywords)
 
     def _parse_date(self, date_input: str) -> str:
-        if not date_input:
-            return ""
-        try:
-            return date_parser.parse(date_input, fuzzy=True).strftime("%Y-%m-%d")
-        except (TypeError, ValueError):
-            match = re.search(r"\d{4}-\d{2}-\d{2}", date_input)
-            return match.group(0) if match else date_input
+        return normalize_date(date_input)

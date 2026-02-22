@@ -1,13 +1,12 @@
 # pyright: reportMissingImports=false, reportUnknownVariableType=false, reportUnknownParameterType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false
 
 import logging
-import re
 
 import requests
 from bs4 import BeautifulSoup
-from dateutil import parser as date_parser
 
 from paper_digest.config import Config
+from paper_digest.fetchers.common import match_keywords, normalize_date
 from paper_digest.models import Paper
 
 logger = logging.getLogger(__name__)
@@ -95,14 +94,7 @@ class ArxivFetcher:
     def _match_keywords(
         self, title: str, keywords: list[str], abstract: str = ""
     ) -> list[str]:
-        content = f"{title} {abstract}".lower()
-        return [kw for kw in keywords if kw.lower() in content]
+        return match_keywords(f"{title} {abstract}", keywords)
 
     def _parse_date(self, date_input: str) -> str:
-        if not date_input:
-            return ""
-        try:
-            return date_parser.parse(date_input, fuzzy=True).strftime("%Y-%m-%d")
-        except (TypeError, ValueError):
-            match = re.search(r"\d{4}-\d{2}-\d{2}", date_input)
-            return match.group(0) if match else date_input
+        return normalize_date(date_input)
