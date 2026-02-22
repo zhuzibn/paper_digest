@@ -66,6 +66,31 @@ pip install -r requirements.txt
 
 3. Adjust other settings as needed (keywords, URLs).
 
+### RSS Configuration
+
+The following environment variables control RSS feed behavior:
+
+```env
+# APS Physical Review Letters
+APS_PRL_RSS_URL=https://feeds.aps.org/rss/recent/prl.xml
+APS_PRL_SECTION_FILTER=Condensed Matter and Materials
+
+# Nature
+NATURE_JOURNAL_RSS_URL=https://www.nature.com/nature/current_issue/rss
+NATURE_JOURNAL_CATEGORY_ALLOWLIST=
+
+# General
+RSS_MAX_ENTRIES=200
+```
+
+- `APS_PRL_RSS_URL`: RSS feed URL for APS journals (default: `https://feeds.aps.org/rss/recent/prl.xml`)
+- `APS_PRL_SECTION_FILTER`: Filter papers by section (default: `Condensed Matter and Materials`)
+- `NATURE_JOURNAL_RSS_URL`: RSS feed URL for Nature (default: `https://www.nature.com/nature/current_issue/rss`)
+- `NATURE_JOURNAL_CATEGORY_ALLOWLIST`: Comma-separated list to filter Nature content types. Empty (default) disables filtering.
+- `RSS_MAX_ENTRIES`: Maximum number of entries to fetch per feed (default: `200`)
+
+> **Note:** Nature journal RSS may include mixed content types (research articles, news, comments). Use `NATURE_JOURNAL_CATEGORY_ALLOWLIST` to narrow to specific types (e.g., `research,letter`).
+
 ### Gmail App Password Note
 
 If using Gmail, enable 2-factor authentication, then generate an **App Password**:

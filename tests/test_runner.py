@@ -1,6 +1,6 @@
 # pyright: reportMissingImports=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false
 
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 from paper_digest.config import Config
 from paper_digest.models import Paper
@@ -34,11 +34,15 @@ def _paper(link: str, source: str = "arxiv") -> Paper:
 
 @patch("paper_digest.runner.Emailer")
 @patch("paper_digest.runner.PaperStorage")
+@patch("paper_digest.runner.NatureJournalRssFetcher")
+@patch("paper_digest.runner.ApsPrlRssFetcher")
 @patch("paper_digest.runner.NatureFetcher")
 @patch("paper_digest.runner.ArxivFetcher")
 def test_run_digest_sends_unseen_and_marks_seen_on_success(
     mock_arxiv_fetcher,
     mock_nature_fetcher,
+    mock_aps_prl_rss_fetcher,
+    mock_nature_journal_rss_fetcher,
     mock_storage_cls,
     mock_emailer_cls,
 ):
@@ -49,6 +53,8 @@ def test_run_digest_sends_unseen_and_marks_seen_on_success(
 
     mock_arxiv_fetcher.return_value.fetch.return_value = [seen_paper]
     mock_nature_fetcher.return_value.fetch.return_value = [new_paper]
+    mock_aps_prl_rss_fetcher.return_value.fetch.return_value = []
+    mock_nature_journal_rss_fetcher.return_value.fetch.return_value = []
     storage = mock_storage_cls.return_value
     storage.is_seen.side_effect = [True, False]
     emailer = mock_emailer_cls.return_value
@@ -63,11 +69,15 @@ def test_run_digest_sends_unseen_and_marks_seen_on_success(
 
 @patch("paper_digest.runner.Emailer")
 @patch("paper_digest.runner.PaperStorage")
+@patch("paper_digest.runner.NatureJournalRssFetcher")
+@patch("paper_digest.runner.ApsPrlRssFetcher")
 @patch("paper_digest.runner.NatureFetcher")
 @patch("paper_digest.runner.ArxivFetcher")
 def test_run_digest_does_not_mark_seen_when_email_fails(
     mock_arxiv_fetcher,
     mock_nature_fetcher,
+    mock_aps_prl_rss_fetcher,
+    mock_nature_journal_rss_fetcher,
     mock_storage_cls,
     mock_emailer_cls,
 ):
@@ -76,6 +86,8 @@ def test_run_digest_does_not_mark_seen_when_email_fails(
     new_paper = _paper("https://arxiv.org/abs/2401.00001")
     mock_arxiv_fetcher.return_value.fetch.return_value = [new_paper]
     mock_nature_fetcher.return_value.fetch.return_value = []
+    mock_aps_prl_rss_fetcher.return_value.fetch.return_value = []
+    mock_nature_journal_rss_fetcher.return_value.fetch.return_value = []
     storage = mock_storage_cls.return_value
     storage.is_seen.return_value = False
     emailer = mock_emailer_cls.return_value
@@ -90,11 +102,15 @@ def test_run_digest_does_not_mark_seen_when_email_fails(
 
 @patch("paper_digest.runner.Emailer")
 @patch("paper_digest.runner.PaperStorage")
+@patch("paper_digest.runner.NatureJournalRssFetcher")
+@patch("paper_digest.runner.ApsPrlRssFetcher")
 @patch("paper_digest.runner.NatureFetcher")
 @patch("paper_digest.runner.ArxivFetcher")
 def test_run_digest_returns_zero_when_no_new_papers(
     mock_arxiv_fetcher,
     mock_nature_fetcher,
+    mock_aps_prl_rss_fetcher,
+    mock_nature_journal_rss_fetcher,
     mock_storage_cls,
     mock_emailer_cls,
 ):
@@ -103,6 +119,8 @@ def test_run_digest_returns_zero_when_no_new_papers(
     seen_paper = _paper("https://arxiv.org/abs/2401.00001")
     mock_arxiv_fetcher.return_value.fetch.return_value = [seen_paper]
     mock_nature_fetcher.return_value.fetch.return_value = []
+    mock_aps_prl_rss_fetcher.return_value.fetch.return_value = []
+    mock_nature_journal_rss_fetcher.return_value.fetch.return_value = []
     storage = mock_storage_cls.return_value
     storage.is_seen.return_value = True
 
@@ -115,11 +133,15 @@ def test_run_digest_returns_zero_when_no_new_papers(
 
 @patch("paper_digest.runner.Emailer")
 @patch("paper_digest.runner.PaperStorage")
+@patch("paper_digest.runner.NatureJournalRssFetcher")
+@patch("paper_digest.runner.ApsPrlRssFetcher")
 @patch("paper_digest.runner.NatureFetcher")
 @patch("paper_digest.runner.ArxivFetcher")
 def test_run_digest_continues_if_one_fetcher_raises(
     mock_arxiv_fetcher,
     mock_nature_fetcher,
+    mock_aps_prl_rss_fetcher,
+    mock_nature_journal_rss_fetcher,
     mock_storage_cls,
     mock_emailer_cls,
 ):
@@ -128,6 +150,8 @@ def test_run_digest_continues_if_one_fetcher_raises(
     new_paper = _paper("https://www.nature.com/articles/s41467-024-00001", "nature")
     mock_arxiv_fetcher.return_value.fetch.side_effect = RuntimeError("arxiv boom")
     mock_nature_fetcher.return_value.fetch.return_value = [new_paper]
+    mock_aps_prl_rss_fetcher.return_value.fetch.return_value = []
+    mock_nature_journal_rss_fetcher.return_value.fetch.return_value = []
     storage = mock_storage_cls.return_value
     storage.is_seen.return_value = False
     emailer = mock_emailer_cls.return_value
@@ -147,3 +171,45 @@ def test_run_digest_returns_one_on_fatal_error(_mock_storage_cls):
     code = run_digest(_config())
 
     assert code == 1
+
+
+@patch("paper_digest.runner.Emailer")
+@patch("paper_digest.runner.PaperStorage")
+@patch("paper_digest.runner.NatureJournalRssFetcher")
+@patch("paper_digest.runner.ApsPrlRssFetcher")
+@patch("paper_digest.runner.NatureFetcher")
+@patch("paper_digest.runner.ArxivFetcher")
+def test_run_digest_includes_rss_fetchers_in_dedupe_and_send_flow(
+    mock_arxiv_fetcher,
+    mock_nature_fetcher,
+    mock_aps_prl_rss_fetcher,
+    mock_nature_journal_rss_fetcher,
+    mock_storage_cls,
+    mock_emailer_cls,
+):
+    from paper_digest.runner import run_digest
+
+    arxiv_seen = _paper("https://arxiv.org/abs/2401.00001", "arxiv")
+    prl_new = _paper(
+        "https://journals.aps.org/prl/abstract/10.1103/PhysRevLett.1", "aps-prl"
+    )
+    nature_rss_new = _paper(
+        "https://www.nature.com/articles/d41586-024-00001-1", "nature-journal"
+    )
+
+    mock_arxiv_fetcher.return_value.fetch.return_value = [arxiv_seen]
+    mock_nature_fetcher.return_value.fetch.return_value = []
+    mock_aps_prl_rss_fetcher.return_value.fetch.return_value = [prl_new]
+    mock_nature_journal_rss_fetcher.return_value.fetch.return_value = [nature_rss_new]
+
+    storage = mock_storage_cls.return_value
+    storage.is_seen.side_effect = [True, False, False]
+
+    emailer = mock_emailer_cls.return_value
+    emailer.send_digest.return_value = True
+
+    code = run_digest(_config())
+
+    assert code == 0
+    emailer.send_digest.assert_called_once_with([prl_new, nature_rss_new])
+    assert storage.mark_seen.call_args_list == [call(prl_new), call(nature_rss_new)]
