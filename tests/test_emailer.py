@@ -76,6 +76,12 @@ def test_send_digest_sends_multipart_email_with_expected_content(mock_smtp):
     )
 
     for value in [
+        "Sources checked:",
+        "Related papers found:",
+        "arXiv (cond-mat/new): 1",
+        "Nature Communications: 0",
+        "Physical Review Letters: 0",
+        "Nature (journal): 0",
         "Spin-orbit torque in MRAM",
         "Ada Lovelace, Grace Hopper",
         "https://arxiv.org/abs/2401.00001",

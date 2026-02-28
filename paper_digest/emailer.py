@@ -43,6 +43,19 @@ class Emailer:
         self, papers: list[Paper], matched_keywords: list[str]
     ) -> str:
         lines: list[str] = ["Daily Paper Digest", ""]
+
+        source_counts = self._source_counts(papers)
+        lines.append(
+            "Sources checked: arXiv (cond-mat/new), Nature Communications, Physical Review Letters, Nature (journal)"
+        )
+        lines.append(f"Related papers found: {len(papers)}")
+        lines.append("")
+        lines.append(f"arXiv (cond-mat/new): {source_counts.get('arxiv', 0)}")
+        lines.append(f"Nature Communications: {source_counts.get('nature', 0)}")
+        lines.append(f"Physical Review Letters: {source_counts.get('aps-prl', 0)}")
+        lines.append(f"Nature (journal): {source_counts.get('nature-journal', 0)}")
+        lines.append("")
+
         for paper in papers:
             authors = ", ".join(paper.authors) if paper.authors else "N/A"
             paper_keywords = ", ".join(paper.keywords_matched)
@@ -61,6 +74,7 @@ class Emailer:
         return "\n".join(lines)
 
     def _build_html_body(self, papers: list[Paper], matched_keywords: list[str]) -> str:
+        source_counts = self._source_counts(papers)
         items: list[str] = []
         for paper in papers:
             authors = ", ".join(paper.authors) if paper.authors else "N/A"
@@ -79,6 +93,14 @@ class Emailer:
         return (
             "<html><body>"
             + "<h2>Daily Paper Digest</h2>"
+            + "<p><strong>Sources checked:</strong> arXiv (cond-mat/new), Nature Communications, Physical Review Letters, Nature (journal)</p>"
+            + f"<p><strong>Related papers found:</strong> {len(papers)}</p>"
+            + "<ul>"
+            + f"<li>arXiv (cond-mat/new): {source_counts.get('arxiv', 0)}</li>"
+            + f"<li>Nature Communications: {source_counts.get('nature', 0)}</li>"
+            + f"<li>Physical Review Letters: {source_counts.get('aps-prl', 0)}</li>"
+            + f"<li>Nature (journal): {source_counts.get('nature-journal', 0)}</li>"
+            + "</ul>"
             + f"<p>Matched keywords: {', '.join(matched_keywords)}</p>"
             + "<ul>"
             + "".join(items)
@@ -94,3 +116,9 @@ class Emailer:
                     seen.add(keyword)
                     ordered.append(keyword)
         return ordered
+
+    def _source_counts(self, papers: list[Paper]) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for paper in papers:
+            counts[paper.source] = counts.get(paper.source, 0) + 1
+        return counts

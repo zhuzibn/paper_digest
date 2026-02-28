@@ -1,3 +1,8 @@
+# AI/Tool state
+.sisyphus/
+.ruff_cache/
+
+
 # Virtual Environment
 venv/
 env/
@@ -54,3 +59,7 @@ cron.log
 
 # Virtual environment wrapper
 .venv/
+
+
+# Documentation working directory
+docs/
