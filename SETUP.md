@@ -62,6 +62,9 @@ pip install -r requirements.txt
    SMTP_PASSWORD=your_smtp_password
    EMAIL_FROM=your.email@example.com
    EMAIL_TO=recipient@example.com
+
+   ARXIV_URL=https://arxiv.org/list/cond-mat/new
+   NATURE_URL=https://www.nature.com/ncomms.rss
    ```
 
 3. Adjust other settings as needed (keywords, URLs).

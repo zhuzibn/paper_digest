@@ -63,7 +63,7 @@ A Python tool for automatically fetching and digesting research papers from arXi
 
    # Paper Sources
    ARXIV_URL=https://arxiv.org/list/cond-mat/new
-   NATURE_URL=https://www.nature.com/subjects/physical-sciences/ncomms
+   NATURE_URL=https://www.nature.com/ncomms.rss
 
    # Keywords (comma-separated)
    KEYWORDS=spintronics,spin-orbit torque,antiferromagnet
@@ -188,7 +188,7 @@ Matching is case-insensitive and searches paper titles and abstracts.
 Configure source URLs in `.env`:
 
 - **arXiv**: Default is condensed matter (`cond-mat/new`). Change to your preferred category.
-- **Nature Communications**: Default is physical sciences. Modify as needed.
+- **Nature Communications**: Default is the RSS feed (`https://www.nature.com/ncomms.rss`). Modify as needed.
 
 ### State Management
 
