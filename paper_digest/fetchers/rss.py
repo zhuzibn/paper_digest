@@ -41,7 +41,14 @@ def fetch_feed_entries(
         published_raw = str(
             entry.get("published") or entry.get("updated") or entry.get("pubDate") or ""
         )
-        summary = str(entry.get("summary") or entry.get("description") or "").strip()
+        summary_raw = entry.get("summary") or entry.get("description")
+        if not summary_raw:
+            content_data = entry.get("content")
+            if isinstance(content_data, list) and content_data:
+                first_content = content_data[0]
+                if hasattr(first_content, "get"):
+                    summary_raw = first_content.get("value", "")
+        summary = str(summary_raw or "").strip()
 
         authors: list[str] = []
         authors_data = entry.get("authors")

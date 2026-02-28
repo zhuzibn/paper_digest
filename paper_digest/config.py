@@ -52,9 +52,7 @@ class Config:
             email_from=os.getenv("EMAIL_FROM", ""),
             email_to=os.getenv("EMAIL_TO", ""),
             arxiv_url=os.getenv("ARXIV_URL", "https://arxiv.org/list/cond-mat/new"),
-            nature_url=os.getenv(
-                "NATURE_URL", "https://www.nature.com/subjects/physical-sciences/ncomms"
-            ),
+            nature_url=os.getenv("NATURE_URL", "https://www.nature.com/ncomms.rss"),
             aps_prl_rss_url=os.getenv(
                 "APS_PRL_RSS_URL", "https://feeds.aps.org/rss/recent/prl.xml"
             ),
