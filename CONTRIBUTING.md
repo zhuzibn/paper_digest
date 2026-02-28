@@ -39,3 +39,30 @@ Users need visibility into which sources are being checked and how many papers w
 
 ## Last Updated
 2026-02-28
+
+
+---
+
+## Section 1: Source Code Changes
+
+### 2026-02-28: Merge SETUP.md into README.md and update documentation
+
+**Files Modified:**
+- `README.md`
+- `SETUP.md` (deleted)
+- `CONTRIBUTING.md`
+
+**Description:**
+Merged detailed setup instructions from SETUP.md into the main README.md file and updated the documentation to reflect the current codebase state. Updated source information to include all four fetchers (arXiv, Nature Communications, APS PRL, Nature journal) and RSS configuration options.
+
+**Implementation Details:**
+- Consolidated all setup, installation, and configuration instructions into README.md
+- Added detailed RSS configuration section with environment variable descriptions
+- Updated features list to include source statistics
+- Updated project structure to reflect actual file organization
+- Added troubleshooting section
+- Removed SETUP.md reference and deleted the file
+
+**Why this change:**
+Simplify documentation by maintaining a single, comprehensive README file instead of splitting content across multiple files. The README now serves as both overview and detailed setup guide.
+
