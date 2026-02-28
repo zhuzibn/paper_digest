@@ -1,4 +1,4 @@
-# pyright: reportMissingImports=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false
+# pyright: reportMissingImports=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportPrivateUsage=false
 
 from unittest.mock import Mock, patch
 
@@ -41,46 +41,41 @@ def test_parse_date_handles_common_inputs() -> None:
     assert fetcher._parse_date("2024-01-15") == "2024-01-15"
 
 
-@patch("paper_digest.fetchers.nature.requests.get")
-def test_fetch_uses_subject_url_and_returns_only_keyword_matches(
-    mock_get: Mock,
+@patch("paper_digest.fetchers.nature.fetch_feed_entries")
+def test_fetch_rss_returns_only_keyword_matches(
+    mock_fetch_feed_entries: Mock,
 ) -> None:
-    html = """
-    <html>
-      <body>
-        <article class="c-article-item">
-          <h3 class="c-article-item__title">
-            <a href="/articles/s41586-024-12345">Spin-orbit torque in antiferromagnetic devices</a>
-          </h3>
-          <p class="c-article-item__description">A route to MRAM-compatible switching.</p>
-          <ul class="c-article-item__authors"><li>Alice</li><li>Bob</li></ul>
-          <time class="c-article-item__date">15 January 2024</time>
-        </article>
-        <article class="c-article-item">
-          <h3 class="c-article-item__title">
-            <a href="/articles/s41586-024-54321">Thermal transport in thin films</a>
-          </h3>
-          <p class="c-article-item__description">No matching terms here.</p>
-          <ul class="c-article-item__authors"><li>Carol</li></ul>
-          <time class="c-article-item__date">16 January 2024</time>
-        </article>
-      </body>
-    </html>
-    """
-    response = Mock()
-    response.text = html
-    response.raise_for_status = Mock()
-    mock_get.return_value = response
+    mock_fetch_feed_entries.return_value = [
+        {
+            "title": "Spin-orbit torque in antiferromagnetic devices",
+            "link": "https://www.nature.com/articles/s41586-024-12345",
+            "published": "2024-01-15",
+            "authors": ["Alice", "Bob"],
+            "summary": "<p>A route to MRAM-compatible switching.</p>",
+            "categories": ["physics"],
+            "raw": {},
+        },
+        {
+            "title": "Thermal transport in thin films",
+            "link": "https://www.nature.com/articles/s41586-024-54321",
+            "published": "2024-01-16",
+            "authors": ["Carol"],
+            "summary": "No matching terms here.",
+            "categories": ["materials"],
+            "raw": {},
+        },
+    ]
 
     config = _config()
+    config.nature_url = "https://www.nature.com/ncomms.rss"
     fetcher = NatureFetcher(config)
 
     papers = fetcher.fetch()
 
-    mock_get.assert_called_once_with(
+    mock_fetch_feed_entries.assert_called_once_with(
         config.nature_url,
-        headers={"User-Agent": config.user_agent},
-        timeout=30,
+        config.user_agent,
+        max_entries=config.rss_max_entries,
     )
     assert len(papers) == 1
     assert papers[0].title == "Spin-orbit torque in antiferromagnetic devices"
@@ -93,3 +88,20 @@ def test_fetch_uses_subject_url_and_returns_only_keyword_matches(
         "antiferromagnet",
         "mram",
     ]
+
+
+@patch("paper_digest.fetchers.nature.requests.get")
+@patch("paper_digest.fetchers.nature.fetch_feed_entries")
+def test_fetch_returns_empty_for_non_rss_url(
+    mock_fetch_feed_entries: Mock,
+    mock_get: Mock,
+) -> None:
+    config = _config()
+    config.nature_url = "https://www.nature.com/subjects/physical-sciences/ncomms"
+    fetcher = NatureFetcher(config)
+
+    papers = fetcher.fetch()
+
+    mock_fetch_feed_entries.assert_not_called()
+    mock_get.assert_not_called()
+    assert papers == []

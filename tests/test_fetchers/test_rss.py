@@ -42,6 +42,36 @@ def _rss_fixture() -> str:
 """
 
 
+def _rdf_fixture() -> str:
+    return """<?xml version="1.0" encoding="UTF-8"?>
+<rdf:RDF
+  xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+  xmlns="http://purl.org/rss/1.0/"
+  xmlns:dc="http://purl.org/dc/elements/1.1/"
+  xmlns:content="http://purl.org/rss/1.0/modules/content/"
+>
+  <channel rdf:about="https://example.com/rdf.xml">
+    <title>Example RDF Feed</title>
+    <link>https://example.com/</link>
+    <description>Example RDF Channel</description>
+    <items>
+      <rdf:Seq>
+        <rdf:li rdf:resource="https://example.com/rdf-paper" />
+      </rdf:Seq>
+    </items>
+  </channel>
+  <item rdf:about="https://example.com/rdf-paper">
+    <title>RDF Paper</title>
+    <link>https://example.com/rdf-paper?utm_campaign=feed</link>
+    <dc:date>2024-02-20T11:12:13Z</dc:date>
+    <dc:creator>Alice Author</dc:creator>
+    <dc:creator>Bob Author</dc:creator>
+    <content:encoded><![CDATA[<p>RDF content summary only.</p>]]></content:encoded>
+  </item>
+</rdf:RDF>
+"""
+
+
 @patch("paper_digest.fetchers.rss.requests.get")
 def test_fetch_feed_entries_normalizes_and_drops_invalid_entries(
     mock_get: Mock,
@@ -83,3 +113,38 @@ def test_fetch_feed_entries_respects_max_entries_cap(mock_get: Mock) -> None:
 
     assert len(entries) == 1
     assert entries[0]["title"] == "First Paper"
+
+
+@patch("paper_digest.fetchers.rss.requests.get")
+def test_fetch_feed_entries_supports_rdf_content_updated_and_many_authors(
+    mock_get: Mock,
+) -> None:
+    response = Mock()
+    response.text = _rdf_fixture()
+    response.raise_for_status = Mock()
+    mock_get.return_value = response
+
+    parsed_feed = Mock()
+    parsed_feed.entries = [
+        {
+            "title": "RDF Paper",
+            "link": "https://example.com/rdf-paper?utm_campaign=feed",
+            "updated": "2024-02-20T11:12:13Z",
+            "authors": [{"name": "Alice Author"}, {"name": "Bob Author"}],
+            "summary": "",
+            "description": "",
+            "content": [{"value": "<p>RDF content summary only.</p>"}],
+        }
+    ]
+
+    with patch("paper_digest.fetchers.rss.feedparser.parse", return_value=parsed_feed):
+        entries = fetch_feed_entries(
+            "https://example.com/rdf.xml", user_agent="PaperDigestTest/1.0"
+        )
+
+    assert len(entries) == 1
+    assert entries[0]["title"] == "RDF Paper"
+    assert entries[0]["link"] == "https://example.com/rdf-paper"
+    assert entries[0]["published"] == "2024-02-20"
+    assert len(entries[0]["authors"]) > 1
+    assert entries[0]["summary"] == "<p>RDF content summary only.</p>"

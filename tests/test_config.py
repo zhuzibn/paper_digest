@@ -11,9 +11,30 @@ import paper_digest.config as config_module
 
 
 class ConfigProtocol(Protocol):
+    def __init__(
+        self,
+        *,
+        smtp_host: str,
+        smtp_port: int,
+        smtp_user: str,
+        smtp_password: str,
+        email_from: str,
+        email_to: str,
+        arxiv_url: str,
+        nature_url: str,
+        user_agent: str,
+        keywords: list[str],
+        aps_prl_rss_url: str = "https://feeds.aps.org/rss/recent/prl.xml",
+        aps_prl_section_filter: str = "Condensed Matter and Materials",
+        nature_journal_rss_url: str = "https://www.nature.com/nature/current_issue/rss",
+        nature_journal_category_allowlist: list[str] | None = None,
+        rss_max_entries: int = 200,
+    ) -> None: ...
+
     smtp_host: str
     smtp_port: int
     keywords: list[str]
+    nature_url: str
     aps_prl_rss_url: str
     aps_prl_section_filter: str
     nature_journal_rss_url: str
@@ -87,6 +108,7 @@ def test_from_env_parses_and_normalizes_keywords(monkeypatch: MonkeyPatch):
 
 def test_from_env_defaults_include_rss_fields(monkeypatch: MonkeyPatch):
     config_module = load_config_module()
+    monkeypatch.delenv("NATURE_URL", raising=False)
     monkeypatch.delenv("APS_PRL_RSS_URL", raising=False)
     monkeypatch.delenv("APS_PRL_SECTION_FILTER", raising=False)
     monkeypatch.delenv("NATURE_JOURNAL_RSS_URL", raising=False)
@@ -96,6 +118,7 @@ def test_from_env_defaults_include_rss_fields(monkeypatch: MonkeyPatch):
     config = config_module.Config.from_env()
 
     assert config.aps_prl_rss_url == "https://feeds.aps.org/rss/recent/prl.xml"
+    assert config.nature_url == "https://www.nature.com/ncomms.rss"
     assert config.aps_prl_section_filter == "Condensed Matter and Materials"
     assert (
         config.nature_journal_rss_url
