@@ -50,8 +50,8 @@ Thumbs.db
 # Environment variables
 .env
 
-# State files (optional - uncomment if you want to track state)
-# state/
+# State files (runtime data, should not be tracked)
+state/
 
 # Logs
 *.log
