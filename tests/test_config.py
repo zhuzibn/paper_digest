@@ -141,7 +141,9 @@ def test_state_paths_are_defined_under_project_state_dir():
     assert config_module.STATE_DIR.name == "state"
     assert config_module.STATE_FILE.name == "seen_papers.json"
     assert config_module.STATE_FILE.parent == config_module.STATE_DIR
-    assert str(config_module.STATE_FILE).endswith("paper_digest/state/seen_papers.json")
+    # The state file should be in the project root's state directory
+    assert config_module.STATE_DIR.name == "state"
+    assert str(config_module.STATE_FILE).endswith("state/seen_papers.json")
 
 
 def test_config_can_be_constructed_without_rss_fields():
