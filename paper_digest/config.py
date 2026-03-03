@@ -1,6 +1,9 @@
+import logging
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
 
@@ -10,6 +13,72 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 STATE_DIR = BASE_DIR / "state"
 STATE_FILE = STATE_DIR / "seen_papers.json"
 
+# Define constants
+RESERVED_RSS_FEED_IDS = {"arxiv", "nature", "aps-prl", "nature-journal"}
+
+logger = logging.getLogger(__name__)
+
+def _parse_rss_feeds(raw: str) -> list[tuple[str, str]]:
+    """Parse RSS feeds from a string in the format 'id=url;id2=url2'.
+
+    Args:
+        raw: Raw RSS feeds string
+
+    Returns:
+        List of (feed_id, url) tuples
+    """
+    rss_feeds: list[tuple[str, str]] = []
+    seen_ids: set[str] = set()
+
+    # Split on both semicolon and newline
+    segments: list[str] = []
+    for segment in re.split(r"[;\n]", raw):
+        segment = segment.strip()
+        if segment:
+            segments.append(segment)
+    
+    for segment in segments:
+        if '=' not in segment:
+            logger.warning("Invalid RSS feed format, skipping: %s", segment)
+            continue
+        
+        # Split on first '=' only - in case URL or id itself has `=` character
+        parts: list[str] = segment.split("=", 1)
+        feed_id: str = parts[0].strip()
+        url: str = parts[1].strip()
+
+        # Validate feed_id
+        feed_id = feed_id.strip().lower()
+
+        # Check if it's a reserved ID
+        if feed_id in RESERVED_RSS_FEED_IDS:
+            logger.warning("RSS feed ID '%s' is reserved and will be ignored", feed_id)
+            continue
+        
+        # Validate feed_id format: starts with alphanumeric, then alphanumeric + hyphens
+        if not re.match(r'^[a-z0-9][a-z0-9-]*$', feed_id):
+            logger.warning("Invalid RSS feed ID format, skipping: %s. Must match regex ^[a-z0-9][a-z0-9-]*$", feed_id)
+            continue
+        
+        # Validate URL
+        parsed = urlsplit(url)
+        if not parsed.scheme in ('http', 'https') or not parsed.netloc:
+            logger.warning("Invalid URL format for %s, skipping: %s", feed_id, url)
+            continue
+
+        # Handle duplicate IDs - keep first occurrence but update URL in-place
+        if feed_id in seen_ids:
+            # Find the index and update
+            for i, (existing_id, _) in enumerate(rss_feeds):
+                if existing_id == feed_id:
+                    rss_feeds[i] = (feed_id, url)
+                    break
+        
+        else:
+            rss_feeds.append((feed_id, url))
+            seen_ids.add(feed_id)
+            
+    return rss_feeds
 
 @dataclass
 class Config:
@@ -28,6 +97,7 @@ class Config:
     nature_journal_rss_url: str = "https://www.nature.com/nature/current_issue/rss"
     nature_journal_category_allowlist: list[str] = field(default_factory=list)
     rss_max_entries: int = 200
+    rss_feeds: list[tuple[str, str]] = field(default_factory=list)
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -43,7 +113,16 @@ class Config:
             for part in nature_journal_category_allowlist_raw.split(",")
             if part.strip()
         ]
-
+        
+        # Handle RSS feeds
+        rss_feed_raw = os.getenv("RSS_FEEDS", "")
+        if "RSS_FEEDS" not in os.environ:
+            rss_feeds = []  # Disabled by default for backward compatibility
+        elif not rss_feed_raw.strip():  # Empty or whitespace
+            rss_feeds = []
+        else:
+            rss_feeds = _parse_rss_feeds(rss_feed_raw)
+        
         return cls(
             smtp_host=os.getenv("SMTP_HOST", ""),
             smtp_port=int(os.getenv("SMTP_PORT", "587")),
@@ -65,6 +144,7 @@ class Config:
             ),
             nature_journal_category_allowlist=nature_journal_category_allowlist,
             rss_max_entries=int(os.getenv("RSS_MAX_ENTRIES", "200")),
+            rss_feeds=rss_feeds,
             user_agent=os.getenv(
                 "USER_AGENT", "Mozilla/5.0 (compatible; PaperDigest/1.0)"
             ),

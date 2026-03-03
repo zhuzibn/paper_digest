@@ -24,16 +24,17 @@ class ConfigProtocol(Protocol):
         nature_url: str,
         user_agent: str,
         keywords: list[str],
+        rss_feeds: list[tuple[str, str]] | None = None,
         aps_prl_rss_url: str = "https://feeds.aps.org/rss/recent/prl.xml",
         aps_prl_section_filter: str = "Condensed Matter and Materials",
         nature_journal_rss_url: str = "https://www.nature.com/nature/current_issue/rss",
         nature_journal_category_allowlist: list[str] | None = None,
         rss_max_entries: int = 200,
     ) -> None: ...
-
     smtp_host: str
     smtp_port: int
     keywords: list[str]
+    rss_feeds: list[tuple[str, str]]
     nature_url: str
     aps_prl_rss_url: str
     aps_prl_section_filter: str
@@ -126,6 +127,41 @@ def test_from_env_defaults_include_rss_fields(monkeypatch: MonkeyPatch):
     )
     assert config.nature_journal_category_allowlist == []
     assert config.rss_max_entries == 200
+
+def test_from_env_defaults_rss_feeds_when_unset(monkeypatch: MonkeyPatch):
+    # RSS_FEEDS unset -> Config.rss_feeds should be empty for backward compatibility 
+    config_module = load_config_module()
+    monkeypatch.delenv("RSS_FEEDS", raising=False)
+    config = config_module.Config.from_env()
+    
+    # Should be empty by default when RSS_FEEDS environment variable is unset
+    assert len(config.rss_feeds) == 0
+
+
+
+def test_from_env_empty_rss_feeds_when_empty_string(monkeypatch: MonkeyPatch):
+    # RSS_FEEDS="" -> Config.rss_feeds should be empty
+    config_module = load_config_module()
+    monkeypatch.setenv("RSS_FEEDS", "")
+    config = config_module.Config.from_env()
+    
+    # If RSS_FEEDS is set to empty string, rss_feeds should be empty list
+    assert config.rss_feeds == []
+
+
+
+def test_from_env_filtered_invalid_segments_rss_feeds(monkeypatch: MonkeyPatch):
+    # RSS_FEEDS with invalid segments -> valid segments parsed, invalid ones skipped
+    config_module = load_config_module()
+    # Include valid pairs and malformed segments
+    bad_segment_env = "aps-prb=https://feeds.aps.org/rss/recent/prb.xml;badsegment;science=https://www.science.org/action/showFeed?type=axatoc&feed=rss&jc=science"
+    monkeypatch.setenv("RSS_FEEDS", bad_segment_env)
+    config = config_module.Config.from_env()
+    
+    # Should parse valid segments and skip malformed ones
+    # At least 2 valid pairs (aps-prb and science) should be present, invalid "badsegment" should be skipped
+    assert len([feed for feed in config.rss_feeds if feed[0] in ["aps-prb", "science"]]) >= 2
+    # Invalid segment like "badsegment" should be filtered out (it doesn't contain \"=\")
 
 
 def test_get_config_returns_config_from_env(monkeypatch: MonkeyPatch):

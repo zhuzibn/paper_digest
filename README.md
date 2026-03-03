@@ -96,7 +96,23 @@ If using Gmail, you must use an App Password instead of your regular password:
 
 ### RSS Configuration
 
-The following environment variables control RSS feed behavior:
+The application supports additional RSS feeds through the `RSS_FEEDS` environment variable.
+
+**Format:** `RSS_FEEDS` uses a semicolon-separated format: `id=url;id=url;id=url` (newline-separated is also acceptable).
+
+**Semantics:**
+- **Unset (line commented or removed):** No additional RSS feeds are fetched (disabled by default)
+- **Empty string (`RSS_FEEDS=`):** Also disables additional RSS feeds
+- **Set with values:** Uses only the specified feeds
+
+**Example with 2 feeds:**
+```env
+RSS_FEEDS=aps-prb=https://feeds.aps.org/rss/recent/prb.xml;science=https://www.science.org/action/showFeed?type=axatoc&feed=rss&jc=science
+```
+
+
+
+The following additional environment variables control RSS feed behavior:
 
 - `APS_PRL_RSS_URL`: RSS feed URL for APS journals (default: `https://feeds.aps.org/rss/recent/prl.xml`)
 - `APS_PRL_SECTION_FILTER`: Filter papers by section (default: `Condensed Matter and Materials`)

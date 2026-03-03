@@ -21,10 +21,11 @@ def test_imports_work():
         "paper_digest.runner",
         "paper_digest.fetchers.arxiv",
         "paper_digest.fetchers.nature",
-        "paper_digest.fetchers.rss",
         "paper_digest.fetchers.aps_prl_rss",
         "paper_digest.fetchers.nature_journal_rss",
+        "paper_digest.fetchers.rss_feeds",
     ]
+
 
     imported_modules = [importlib.import_module(name) for name in module_names]
     assert all(module is not None for module in imported_modules)

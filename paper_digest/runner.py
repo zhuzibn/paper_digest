@@ -8,6 +8,7 @@ from paper_digest.fetchers.aps_prl_rss import ApsPrlRssFetcher
 from paper_digest.fetchers.arxiv import ArxivFetcher
 from paper_digest.fetchers.nature import NatureFetcher
 from paper_digest.fetchers.nature_journal_rss import NatureJournalRssFetcher
+from paper_digest.fetchers.rss_feeds import RssFeedsFetcher
 from paper_digest.models import Paper
 from paper_digest.storage import PaperStorage
 
@@ -23,6 +24,7 @@ def run_digest(config: Config) -> int:
             NatureFetcher(config),
             ApsPrlRssFetcher(config),
             NatureJournalRssFetcher(config),
+            RssFeedsFetcher(config),
         ]
 
         all_papers: list[Paper] = []

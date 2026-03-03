@@ -45,15 +45,22 @@ class Emailer:
         lines: list[str] = ["Daily Paper Digest", ""]
 
         source_counts = self._source_counts(papers)
-        lines.append(
-            "Sources checked: arXiv (cond-mat/new), Nature Communications, Physical Review Letters, Nature (journal)"
-        )
+        source_descriptions = self._get_source_descriptions()
+        lines.append(f"Sources checked: {', '.join(source_descriptions)}")
         lines.append(f"Related papers found: {len(papers)}")
         lines.append("")
-        lines.append(f"arXiv (cond-mat/new): {source_counts.get('arxiv', 0)}")
-        lines.append(f"Nature Communications: {source_counts.get('nature', 0)}")
-        lines.append(f"Physical Review Letters: {source_counts.get('aps-prl', 0)}")
-        lines.append(f"Nature (journal): {source_counts.get('nature-journal', 0)}")
+        # Add per-source counts
+        ordered_sources = [
+            ("arxiv", "arXiv (cond-mat/new)"),
+            ("nature", "Nature Communications"),
+            ("aps-prl", "Physical Review Letters"),
+            ("nature-journal", "Nature (journal)"),
+        ] + [
+            (feed_id, feed_id)  # Use feed_id as label since we no longer have hardcoded labels
+            for feed_id, _ in self.config.rss_feeds
+        ]
+        for source_id, source_label in ordered_sources:
+            lines.append(f"{source_label}: {source_counts.get(source_id, 0)}")
         lines.append("")
 
         for paper in papers:
@@ -90,16 +97,32 @@ class Emailer:
             )
             items.append(item)
 
+        source_descriptions = self._get_source_descriptions()
+        sources_checked_str = ", ".join(source_descriptions)
+        # Prepare source labels in order for counting
+        ordered_sources = [
+            ("arxiv", "arXiv (cond-mat/new)"),
+            ("nature", "Nature Communications"),
+            ("aps-prl", "Physical Review Letters"),
+            ("nature-journal", "Nature (journal)"),
+        ] + [
+            (feed_id, feed_id)  # Use feed_id as label since we no longer have hardcoded labels
+            for feed_id, _ in self.config.rss_feeds
+        ]
+        # Build source counts HTML
+        source_count_items = []
+        for source_id, source_label in ordered_sources:
+            source_count_items.append(
+                f"<li>{source_label}: {source_counts.get(source_id, 0)}</li>"
+            )
+
         return (
             "<html><body>"
             + "<h2>Daily Paper Digest</h2>"
-            + "<p><strong>Sources checked:</strong> arXiv (cond-mat/new), Nature Communications, Physical Review Letters, Nature (journal)</p>"
+            + f"<p><strong>Sources checked:</strong> {sources_checked_str}</p>"
             + f"<p><strong>Related papers found:</strong> {len(papers)}</p>"
             + "<ul>"
-            + f"<li>arXiv (cond-mat/new): {source_counts.get('arxiv', 0)}</li>"
-            + f"<li>Nature Communications: {source_counts.get('nature', 0)}</li>"
-            + f"<li>Physical Review Letters: {source_counts.get('aps-prl', 0)}</li>"
-            + f"<li>Nature (journal): {source_counts.get('nature-journal', 0)}</li>"
+            + "".join(source_count_items)
             + "</ul>"
             + f"<p>Matched keywords: {', '.join(matched_keywords)}</p>"
             + "<ul>"
@@ -122,3 +145,19 @@ class Emailer:
         for paper in papers:
             counts[paper.source] = counts.get(paper.source, 0) + 1
         return counts
+
+    def _get_source_descriptions(self) -> list[str]:
+        """Get list of source descriptions for display, including RSS feeds from config."""
+        descriptions = [
+            "arXiv (cond-mat/new)",
+            "Nature Communications",
+            "Physical Review Letters",
+            "Nature (journal)",
+        ]
+
+        # Add additional RSS feed IDs from configuration
+        for feed_id, _ in self.config.rss_feeds:
+            descriptions.append(feed_id)
+
+        return descriptions
+        return descriptions
