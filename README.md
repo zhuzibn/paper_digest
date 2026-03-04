@@ -71,12 +71,15 @@ EMAIL_TO=recipient@example.com
 ARXIV_URL=https://arxiv.org/list/cond-mat/new
 NATURE_URL=https://www.nature.com/ncomms.rss
 
-# RSS Sources
-APS_PRL_RSS_URL=https://feeds.aps.org/rss/recent/prl.xml
+# RSS Sources - Built-in sources only (preferred)
+RSS_FEEDS=nature=https://www.nature.com/ncomms.rss;aps-prl=https://feeds.aps.org/rss/recent/prl.xml;nature-journal=https://www.nature.com/nature/current_issue/rss
 APS_PRL_SECTION_FILTER=Condensed Matter and Materials
-NATURE_JOURNAL_RSS_URL=https://www.nature.com/nature/current_issue/rss
 NATURE_JOURNAL_CATEGORY_ALLOWLIST=
 RSS_MAX_ENTRIES=200
+
+# Legacy fallback variables (deprecated, use RSS_FEEDS above)
+# APS_PRL_RSS_URL=https://feeds.aps.org/rss/recent/prl.xml
+# NATURE_JOURNAL_RSS_URL=https://www.nature.com/nature/current_issue/rss
 
 # Keywords (comma-separated)
 KEYWORDS=spintronics,spin-orbit torque,antiferromagnet
@@ -101,26 +104,38 @@ The application supports additional RSS feeds through the `RSS_FEEDS` environmen
 **Format:** `RSS_FEEDS` uses a semicolon-separated format: `id=url;id=url;id=url` (newline-separated is also acceptable).
 
 **Semantics:**
-- **Unset (line commented or removed):** No additional RSS feeds are fetched (disabled by default)
-- **Empty string (`RSS_FEEDS=`):** Also disables additional RSS feeds
-- **Set with values:** Uses only the specified feeds
+- **Unset (line commented or removed):** No additional RSS feeds are fetched beyond the built-in sources (arXiv, Nature Communications, APS PRL, Nature journal)
+- **Empty string (`RSS_FEEDS=`):** Same as unset - only built-in sources are used
+- **Set with values:** Uses the specified feeds as overrides for built-in sources and adds additional feeds
+- **Built-in sources are always active:** Omitting a built-in ID from `RSS_FEEDS` does NOT disable that source
+- **Precedence:** RSS_FEEDS value for a built-in ID > legacy env var (e.g., `APS_PRL_RSS_URL`) > default
 
-**Example with 2 feeds:**
+**Built-in override IDs supported in `RSS_FEEDS`:**
+- `nature` - Nature Communications (default: `https://www.nature.com/ncomms.rss`)
+- `aps-prl` - APS Physical Review Letters (default: `https://feeds.aps.org/rss/recent/prl.xml`)
+- `nature-journal` - Nature journal (default: `https://www.nature.com/nature/current_issue/rss`)
+
+**Example with built-in sources only:**
 ```env
-RSS_FEEDS=aps-prb=https://feeds.aps.org/rss/recent/prb.xml;science=https://www.science.org/action/showFeed?type=axatoc&feed=rss&jc=science
+RSS_FEEDS=nature=https://www.nature.com/ncomms.rss;aps-prl=https://feeds.aps.org/rss/recent/prl.xml;nature-journal=https://www.nature.com/nature/current_issue/rss
 ```
 
-
-
-The following additional environment variables control RSS feed behavior:
-
-- `APS_PRL_RSS_URL`: RSS feed URL for APS journals (default: `https://feeds.aps.org/rss/recent/prl.xml`)
-- `APS_PRL_SECTION_FILTER`: Filter papers by section (default: `Condensed Matter and Materials`)
-- `NATURE_JOURNAL_RSS_URL`: RSS feed URL for Nature (default: `https://www.nature.com/nature/current_issue/rss`)
-- `NATURE_JOURNAL_CATEGORY_ALLOWLIST`: Comma-separated list to filter Nature content types. Empty (default) disables filtering.
-- `RSS_MAX_ENTRIES`: Maximum number of entries to fetch per feed (default: `200`)
-
-> **Note:** Nature journal RSS may include mixed content types (research articles, news, comments). Use `NATURE_JOURNAL_CATEGORY_ALLOWLIST` to narrow to specific types (e.g., `research,letter`).
+**Example with full feed list (built-ins + additional):**
+```env
+# nature -> Nature Communications
+# aps-prl -> APS Physical Review Letters
+# nature-journal -> Nature journal
+# aps-prb -> APS Physical Review B
+# aps-prapplied -> APS Physical Review Applied
+# aps-prx -> APS Physical Review X
+# aps-rmp -> APS Reviews of Modern Physics
+# science -> Science
+# science-advances -> Science Advances
+# nano-letters -> Nano Letters
+# acs-nano -> ACS Nano
+# aip-apl -> AIP Applied Physics Letters
+RSS_FEEDS=nature=https://www.nature.com/ncomms.rss;aps-prl=https://feeds.aps.org/rss/recent/prl.xml;nature-journal=https://www.nature.com/nature/current_issue/rss;aps-prb=https://feeds.aps.org/rss/recent/prb.xml;aps-prapplied=https://feeds.aps.org/rss/recent/prapplied.xml;aps-prx=https://feeds.aps.org/rss/recent/prx.xml;aps-rmp=https://feeds.aps.org/rss/recent/rmp.xml;science=https://www.science.org/action/showFeed?type=axatoc&feed=rss&jc=science;science-advances=https://www.science.org/action/showFeed?type=etoc&feed=rss&jc=sciadv;nano-letters=https://pubs.acs.org/action/showFeed?type=axatoc&feed=rss&jc=nalefd;acs-nano=https://pubs.acs.org/action/showFeed?type=axatoc&feed=rss&jc=ancac3;aip-apl=https://pubs.aip.org/rss/site_1000017/1000011.xml
+```
 
 ## Usage
 

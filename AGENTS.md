@@ -298,3 +298,46 @@ Merged detailed setup instructions from SETUP.md into the main README.md file an
 **Why this change:**
 Simplify documentation by maintaining a single, comprehensive README file instead of splitting content across multiple files. The README now serves as both overview and detailed setup guide.
 
+
+
+---
+
+## Section 1: Source Code Changes
+
+### 2026-03-04: RSS_FEEDS Configuration with Built-in Override Support
+
+**Files Modified:**
+
+- `paper_digest/config.py`
+- `.env.example`
+- `README.md`
+- `tests/test_config.py`
+
+**Description:**
+Enhanced RSS configuration to support built-in source overrides and additional feed configuration through the `RSS_FEEDS` environment variable.
+
+**Implementation Details:**
+
+- Added support for built-in override IDs in `RSS_FEEDS`: `nature`, `aps-prl`, `nature-journal`
+- `rss_feeds` field populated by parsing `RSS_FEEDS` environment variable; built-in override IDs (`nature`, `aps-prl`, `nature-journal`) are excluded from the parsed list
+- Built-in source precedence: `RSS_FEEDS` value > legacy env var (e.g., `APS_PRL_RSS_URL`) > default
+- Updated `.env.example` with `RSS_FEEDS` examples and deprecated legacy variables
+- Updated `README.md` RSS configuration section with built-in ID documentation
+- Added tests in `test_config.py` covering:
+  - `test_from_env_rss_feeds_overrides_builtin_urls` - verifies RSS_FEEDS values override built-in source URLs
+  - `test_from_env_rss_feeds_excludes_builtin_ids_from_additional_feeds` - verifies built-in IDs excluded from rss_feeds list
+  - `test_from_env_rss_feeds_invalid_builtin_override_falls_back_to_default` - verifies invalid URLs fall back to defaults
+
+
+
+**Why this change:**
+Provides flexible RSS feed configuration while maintaining built-in sources. Users can override default feed URLs or add additional feeds through a single environment variable.
+
+**Prevention:**
+Run tests to avoid regression: `pytest tests/test_config.py::test_from_env_rss_feeds_overrides_builtin_urls`, `pytest tests/test_config.py::test_from_env_rss_feeds_excludes_builtin_ids_from_additional_feeds`, `pytest tests/test_config.py::test_from_env_rss_feeds_invalid_builtin_override_falls_back_to_default`
+
+---
+
+## Last Updated
+
+2026-03-04

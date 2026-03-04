@@ -3,6 +3,7 @@ import importlib
 from pathlib import Path
 from typing import Protocol, cast
 
+from _pytest.logging import LogCaptureFixture
 from _pytest.monkeypatch import MonkeyPatch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -31,6 +32,7 @@ class ConfigProtocol(Protocol):
         nature_journal_category_allowlist: list[str] | None = None,
         rss_max_entries: int = 200,
     ) -> None: ...
+
     smtp_host: str
     smtp_port: int
     keywords: list[str]
@@ -128,15 +130,15 @@ def test_from_env_defaults_include_rss_fields(monkeypatch: MonkeyPatch):
     assert config.nature_journal_category_allowlist == []
     assert config.rss_max_entries == 200
 
+
 def test_from_env_defaults_rss_feeds_when_unset(monkeypatch: MonkeyPatch):
-    # RSS_FEEDS unset -> Config.rss_feeds should be empty for backward compatibility 
+    # RSS_FEEDS unset -> Config.rss_feeds should be empty for backward compatibility
     config_module = load_config_module()
     monkeypatch.delenv("RSS_FEEDS", raising=False)
     config = config_module.Config.from_env()
-    
+
     # Should be empty by default when RSS_FEEDS environment variable is unset
     assert len(config.rss_feeds) == 0
-
 
 
 def test_from_env_empty_rss_feeds_when_empty_string(monkeypatch: MonkeyPatch):
@@ -144,10 +146,9 @@ def test_from_env_empty_rss_feeds_when_empty_string(monkeypatch: MonkeyPatch):
     config_module = load_config_module()
     monkeypatch.setenv("RSS_FEEDS", "")
     config = config_module.Config.from_env()
-    
+
     # If RSS_FEEDS is set to empty string, rss_feeds should be empty list
     assert config.rss_feeds == []
-
 
 
 def test_from_env_filtered_invalid_segments_rss_feeds(monkeypatch: MonkeyPatch):
@@ -157,11 +158,87 @@ def test_from_env_filtered_invalid_segments_rss_feeds(monkeypatch: MonkeyPatch):
     bad_segment_env = "aps-prb=https://feeds.aps.org/rss/recent/prb.xml;badsegment;science=https://www.science.org/action/showFeed?type=axatoc&feed=rss&jc=science"
     monkeypatch.setenv("RSS_FEEDS", bad_segment_env)
     config = config_module.Config.from_env()
-    
+
     # Should parse valid segments and skip malformed ones
     # At least 2 valid pairs (aps-prb and science) should be present, invalid "badsegment" should be skipped
-    assert len([feed for feed in config.rss_feeds if feed[0] in ["aps-prb", "science"]]) >= 2
+    assert (
+        len([feed for feed in config.rss_feeds if feed[0] in ["aps-prb", "science"]])
+        >= 2
+    )
     # Invalid segment like "badsegment" should be filtered out (it doesn't contain \"=\")
+
+
+def test_from_env_rss_feeds_overrides_builtin_urls(monkeypatch: MonkeyPatch):
+    config_module = load_config_module()
+    monkeypatch.setenv("NATURE_URL", "https://legacy.example.com/nature.rss")
+    monkeypatch.setenv("APS_PRL_RSS_URL", "https://legacy.example.com/aps-prl.rss")
+    monkeypatch.setenv(
+        "NATURE_JOURNAL_RSS_URL",
+        "https://legacy.example.com/nature-journal.rss",
+    )
+    monkeypatch.setenv(
+        "RSS_FEEDS",
+        "nature=https://override.example.com/nature.rss;"
+        + "aps-prl=https://override.example.com/aps-prl.rss;"
+        + "nature-journal=https://override.example.com/nature-journal.rss;"
+        + "custom=https://override.example.com/custom.rss",
+    )
+
+    config = config_module.Config.from_env()
+
+    assert config.nature_url == "https://override.example.com/nature.rss"
+    assert config.aps_prl_rss_url == "https://override.example.com/aps-prl.rss"
+    assert (
+        config.nature_journal_rss_url
+        == "https://override.example.com/nature-journal.rss"
+    )
+    assert ("custom", "https://override.example.com/custom.rss") in config.rss_feeds
+
+
+def test_from_env_rss_feeds_invalid_builtin_override_falls_back_to_default(
+    monkeypatch: MonkeyPatch,
+    caplog: LogCaptureFixture,
+):
+    config_module = load_config_module()
+    monkeypatch.setenv("APS_PRL_RSS_URL", "https://legacy.example.com/aps-prl.rss")
+    monkeypatch.setenv("RSS_FEEDS", "aps-prl=notaurl")
+
+    config = config_module.Config.from_env()
+
+    assert config.aps_prl_rss_url == "https://legacy.example.com/aps-prl.rss"
+    assert "Invalid built-in override URL for aps-prl" in caplog.text
+
+
+def test_from_env_rss_feeds_excludes_builtin_ids_from_additional_feeds(
+    monkeypatch: MonkeyPatch,
+):
+    config_module = load_config_module()
+    monkeypatch.setenv("NATURE_URL", "https://legacy.example.com/nature.rss")
+    monkeypatch.setenv("APS_PRL_RSS_URL", "https://legacy.example.com/aps-prl.rss")
+    monkeypatch.setenv(
+        "NATURE_JOURNAL_RSS_URL",
+        "https://legacy.example.com/nature-journal.rss",
+    )
+    monkeypatch.setenv(
+        "RSS_FEEDS",
+        "nature=https://override.example.com/nature.rss;"
+        + "aps-prl=https://override.example.com/aps-prl.rss;"
+        + "nature-journal=https://override.example.com/nature-journal.rss;"
+        + "custom=https://override.example.com/custom.rss",
+    )
+
+    config = config_module.Config.from_env()
+
+    assert ("nature", "https://override.example.com/nature.rss") not in config.rss_feeds
+    assert (
+        "aps-prl",
+        "https://override.example.com/aps-prl.rss",
+    ) not in config.rss_feeds
+    assert (
+        "nature-journal",
+        "https://override.example.com/nature-journal.rss",
+    ) not in config.rss_feeds
+    assert ("custom", "https://override.example.com/custom.rss") in config.rss_feeds
 
 
 def test_get_config_returns_config_from_env(monkeypatch: MonkeyPatch):
