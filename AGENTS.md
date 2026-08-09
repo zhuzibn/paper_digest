@@ -234,6 +234,29 @@ This document tracks all changes and resolutions to ensure project maintainabili
 
 ## Section 1: Source Code Changes
 
+### 2026-02-28: Merge SETUP.md into README.md and update documentation
+
+**Files Modified:**
+
+- `README.md`
+- `SETUP.md` (deleted)
+- `CONTRIBUTING.md`
+
+**Description:**
+Merged detailed setup instructions from SETUP.md into the main README.md file and updated the documentation to reflect the current codebase state. Updated source information to include all four fetchers (arXiv, Nature Communications, APS PRL, Nature journal) and RSS configuration options.
+
+**Implementation Details:**
+
+- Consolidated all setup, installation, and configuration instructions into README.md
+- Added detailed RSS configuration section with environment variable descriptions
+- Updated features list to include source statistics
+- Updated project structure to reflect actual file organization
+- Added troubleshooting section
+- Removed SETUP.md reference and deleted the file
+
+**Why this change:**
+Simplify documentation by maintaining a single, comprehensive README file instead of splitting content across multiple files. The README now serves as both overview and detailed setup guide.
+
 ### 2026-02-28: Enhanced Email Notifications with Source Statistics
 
 **Files Modified:**
@@ -258,51 +281,26 @@ Added source count statistics to email notifications. The email body (both text 
 **Why this change:**
 Users need visibility into which sources are being checked and how many papers were found from each source to better understand the search coverage.
 
----
+### [v0.1.0] | 2026-03-03
 
-## Section 2: Error Logs
+- **Type:** feat
 
-*No errors encountered yet.*
+- **Description:** Add `RSS_FEEDS` list config + generic RSS fetcher + dynamic email source stats
 
----
+- **Motivation:** Track additional journals without per-feed env vars, allowing users to configure arbitrary RSS feeds in a single list
 
-## Last Updated
+- **Files Modified:**
 
-2026-02-28
+  - `paper_digest/config.py`
+  - `paper_digest/fetchers/rss_feeds.py`
+  - `paper_digest/runner.py`
+  - `paper_digest/emailer.py`
+  - `tests/test_fetchers/test_rss_feeds.py`
+  - `tests/conftest.py`
+  - `.env.example`
+  - `README.md`
 
-
----
-
-## Section 1: Source Code Changes
-
-### 2026-02-28: Merge SETUP.md into README.md and update documentation
-
-**Files Modified:**
-
-- `README.md`
-- `SETUP.md` (deleted)
-- `CONTRIBUTING.md`
-
-**Description:**
-Merged detailed setup instructions from SETUP.md into the main README.md file and updated the documentation to reflect the current codebase state. Updated source information to include all four fetchers (arXiv, Nature Communications, APS PRL, Nature journal) and RSS configuration options.
-
-**Implementation Details:**
-
-- Consolidated all setup, installation, and configuration instructions into README.md
-- Added detailed RSS configuration section with environment variable descriptions
-- Updated features list to include source statistics
-- Updated project structure to reflect actual file organization
-- Added troubleshooting section
-- Removed SETUP.md reference and deleted the file
-
-**Why this change:**
-Simplify documentation by maintaining a single, comprehensive README file instead of splitting content across multiple files. The README now serves as both overview and detailed setup guide.
-
-
-
----
-
-## Section 1: Source Code Changes
+- **Test Strategy:** `pytest`
 
 ### 2026-03-04: RSS_FEEDS Configuration with Built-in Override Support
 
@@ -328,8 +326,6 @@ Enhanced RSS configuration to support built-in source overrides and additional f
   - `test_from_env_rss_feeds_excludes_builtin_ids_from_additional_feeds` - verifies built-in IDs excluded from rss_feeds list
   - `test_from_env_rss_feeds_invalid_builtin_override_falls_back_to_default` - verifies invalid URLs fall back to defaults
 
-
-
 **Why this change:**
 Provides flexible RSS feed configuration while maintaining built-in sources. Users can override default feed URLs or add additional feeds through a single environment variable.
 
@@ -338,6 +334,31 @@ Run tests to avoid regression: `pytest tests/test_config.py::test_from_env_rss_f
 
 ---
 
-## Last Updated
+## Section 2: Error Logs
 
-2026-03-04
+### [ERR-001] | Pytest ModuleNotFoundError for paper_digest
+
+- **Context:** Running `pytest` after creating new fetcher module during 2026-03-03 development session
+
+- **Symptoms:**
+
+  ```
+  ModuleNotFoundError: No module named 'paper_digest'
+  ```
+
+  Tests failed to import the main package when running from the project root.
+
+- **Root Cause:** Python test runner could not locate the `paper_digest` package because the test directory lacked a `conftest.py` file to configure the Python path properly. Without this configuration, pytest's import resolution failed to find the sibling package.
+
+- **Resolution:** Created `tests/conftest.py` with pytest configuration to add the project root to `sys.path`, enabling proper package resolution:
+
+  ```python
+  import sys
+  from pathlib import Path
+
+  # Add project root to path for imports
+  root = Path(__file__).parent.parent
+  sys.path.insert(0, str(root))
+  ```
+
+- **Prevention:** Always ensure `conftest.py` exists in the tests directory for projects using package imports. Consider using `pip install -e .` for development installs or configuring `PYTHONPATH` in the test environment.
