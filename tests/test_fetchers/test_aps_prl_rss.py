@@ -3,17 +3,12 @@
 from unittest.mock import Mock, patch
 
 from paper_digest.config import Config
+from paper_digest.fetchers.rss import FeedResult
 from paper_digest.fetchers.aps_prl_rss import ApsPrlRssFetcher
 
 
 def _config() -> Config:
     return Config(
-        smtp_host="",
-        smtp_port=587,
-        smtp_user="",
-        smtp_password="",
-        email_from="",
-        email_to="",
         arxiv_url="https://arxiv.org/list/cond-mat/new",
         nature_url="https://www.nature.com/subjects/physical-sciences/ncomms",
         user_agent="PaperDigestTest/1.0",
@@ -26,7 +21,7 @@ def _config() -> Config:
 
 @patch("paper_digest.fetchers.aps_prl_rss.fetch_feed_entries")
 def test_fetch_returns_only_matching_prl_section_entries(mock_fetch: Mock) -> None:
-    mock_fetch.return_value = [
+    mock_fetch.return_value = FeedResult([
         {
             "title": "Spin-orbit torque switching",
             "link": "https://journals.aps.org/prl/abstract/10.1103/PhysRevLett.1",
@@ -45,10 +40,10 @@ def test_fetch_returns_only_matching_prl_section_entries(mock_fetch: Mock) -> No
             "categories": ["Quantum Optics"],
             "raw": {},
         },
-    ]
+    ])
 
     config = _config()
-    papers = ApsPrlRssFetcher(config).fetch()
+    papers = ApsPrlRssFetcher(config).fetch().papers
 
     mock_fetch.assert_called_once_with(
         config.aps_prl_rss_url,
@@ -67,7 +62,7 @@ def test_fetch_returns_only_matching_prl_section_entries(mock_fetch: Mock) -> No
 def test_fetch_uses_raw_field_fallbacks_for_section_date_and_authors(
     mock_fetch: Mock,
 ) -> None:
-    mock_fetch.return_value = [
+    mock_fetch.return_value = FeedResult([
         {
             "title": "Spintronics in layered structures",
             "link": "https://journals.aps.org/prl/abstract/10.1103/PhysRevLett.3",
@@ -81,9 +76,9 @@ def test_fetch_uses_raw_field_fallbacks_for_section_date_and_authors(
                 "dc_creator": "Dana and Evan, Frank",
             },
         }
-    ]
+    ])
 
-    papers = ApsPrlRssFetcher(_config()).fetch()
+    papers = ApsPrlRssFetcher(_config()).fetch().papers
 
     assert len(papers) == 1
     assert papers[0].authors == ["Dana", "Evan", "Frank"]

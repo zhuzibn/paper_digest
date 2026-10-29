@@ -15,12 +15,6 @@ class ConfigProtocol(Protocol):
     def __init__(
         self,
         *,
-        smtp_host: str,
-        smtp_port: int,
-        smtp_user: str,
-        smtp_password: str,
-        email_from: str,
-        email_to: str,
         arxiv_url: str,
         nature_url: str,
         user_agent: str,
@@ -33,8 +27,6 @@ class ConfigProtocol(Protocol):
         rss_max_entries: int = 200,
     ) -> None: ...
 
-    smtp_host: str
-    smtp_port: int
     keywords: list[str]
     rss_feeds: list[tuple[str, str]]
     nature_url: str
@@ -74,12 +66,6 @@ def test_requirements_has_core_dependencies():
 
 def test_from_env_parses_and_normalizes_keywords(monkeypatch: MonkeyPatch):
     config_module = load_config_module()
-    monkeypatch.setenv("SMTP_HOST", "smtp.example.com")
-    monkeypatch.setenv("SMTP_PORT", "2525")
-    monkeypatch.setenv("SMTP_USER", "user@example.com")
-    monkeypatch.setenv("SMTP_PASSWORD", "secret")
-    monkeypatch.setenv("EMAIL_FROM", "from@example.com")
-    monkeypatch.setenv("EMAIL_TO", "to@example.com")
     monkeypatch.setenv("ARXIV_URL", "https://arxiv.example/new")
     monkeypatch.setenv("NATURE_URL", "https://nature.example/new")
     monkeypatch.setenv("APS_PRL_RSS_URL", "https://aps.example/prl.rss")
@@ -95,8 +81,6 @@ def test_from_env_parses_and_normalizes_keywords(monkeypatch: MonkeyPatch):
 
     config = config_module.Config.from_env()
 
-    assert config.smtp_host == "smtp.example.com"
-    assert config.smtp_port == 2525
     assert config.keywords == ["spintronics", "mram", "spin-orbit torque"]
     assert config.aps_prl_rss_url == "https://aps.example/prl.rss"
     assert config.aps_prl_section_filter == "Quantum Matter"
@@ -264,12 +248,6 @@ def test_config_can_be_constructed_without_rss_fields():
     config_module = load_config_module()
     # Old-style construction without RSS fields (like existing tests use)
     config = config_module.Config(
-        smtp_host="smtp.example.com",
-        smtp_port=587,
-        smtp_user="user@example.com",
-        smtp_password="secret",
-        email_from="from@example.com",
-        email_to="to@example.com",
         arxiv_url="https://arxiv.org/list/cond-mat/new",
         nature_url="https://www.nature.com/subjects/physical-sciences/ncomms",
         user_agent="PaperDigestTest/1.0",
@@ -284,3 +262,12 @@ def test_config_can_be_constructed_without_rss_fields():
     )
     assert config.nature_journal_category_allowlist == []
     assert config.rss_max_entries == 200
+
+
+def test_retired_smtp_settings_are_ignored(monkeypatch: MonkeyPatch):
+    """Stale mail settings in an existing .env must not block paper fetching."""
+    module = load_config_module()
+    monkeypatch.setenv("SMTP_PORT", "no-longer-a-valid-port")
+    config = module.Config.from_env()
+    assert not hasattr(config, "smtp_port")
+    assert not hasattr(config, "email_to")

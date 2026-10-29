@@ -3,17 +3,12 @@
 from unittest.mock import Mock, patch
 
 from paper_digest.config import Config
+from paper_digest.fetchers.rss import FeedResult
 from paper_digest.fetchers.nature import NatureFetcher
 
 
 def _config() -> Config:
     return Config(
-        smtp_host="",
-        smtp_port=587,
-        smtp_user="",
-        smtp_password="",
-        email_from="",
-        email_to="",
         arxiv_url="https://arxiv.org/list/cond-mat/new",
         nature_url="https://www.nature.com/subjects/physical-sciences/ncomms",
         user_agent="PaperDigestTest/1.0",
@@ -45,7 +40,7 @@ def test_parse_date_handles_common_inputs() -> None:
 def test_fetch_rss_returns_only_keyword_matches(
     mock_fetch_feed_entries: Mock,
 ) -> None:
-    mock_fetch_feed_entries.return_value = [
+    mock_fetch_feed_entries.return_value = FeedResult([
         {
             "title": "Spin-orbit torque in antiferromagnetic devices",
             "link": "https://www.nature.com/articles/s41586-024-12345",
@@ -64,13 +59,13 @@ def test_fetch_rss_returns_only_keyword_matches(
             "categories": ["materials"],
             "raw": {},
         },
-    ]
+    ])
 
     config = _config()
     config.nature_url = "https://www.nature.com/ncomms.rss"
     fetcher = NatureFetcher(config)
 
-    papers = fetcher.fetch()
+    papers = fetcher.fetch().papers
 
     mock_fetch_feed_entries.assert_called_once_with(
         config.nature_url,
@@ -90,18 +85,15 @@ def test_fetch_rss_returns_only_keyword_matches(
     ]
 
 
-@patch("paper_digest.fetchers.nature.requests.get")
 @patch("paper_digest.fetchers.nature.fetch_feed_entries")
-def test_fetch_returns_empty_for_non_rss_url(
-    mock_fetch_feed_entries: Mock,
-    mock_get: Mock,
-) -> None:
+def test_fetch_accepts_feed_url_without_rss_suffix(mock_fetch_feed_entries: Mock) -> None:
     config = _config()
-    config.nature_url = "https://www.nature.com/subjects/physical-sciences/ncomms"
-    fetcher = NatureFetcher(config)
+    config.nature_url = "https://example.com/feed"
+    mock_fetch_feed_entries.return_value = FeedResult([])
 
-    papers = fetcher.fetch()
+    result = NatureFetcher(config).fetch()
 
-    mock_fetch_feed_entries.assert_not_called()
-    mock_get.assert_not_called()
-    assert papers == []
+    assert result.papers == []
+    mock_fetch_feed_entries.assert_called_once_with(
+        config.nature_url, config.user_agent, max_entries=config.rss_max_entries,
+    )

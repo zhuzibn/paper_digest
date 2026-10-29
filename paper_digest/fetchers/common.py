@@ -1,7 +1,8 @@
 import re
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from dateutil import parser as date_parser
+
+from paper_digest.identity import canonical_url
 
 
 def match_keywords(text: str, keywords: list[str]) -> list[str]:
@@ -31,12 +32,5 @@ def normalize_date(date_input: str) -> str:
 
 
 def canonicalize_link(url: str) -> str:
-    stripped = url.strip()
-    parts = urlsplit(stripped)
-    filtered_query = [
-        (key, value)
-        for key, value in parse_qsl(parts.query, keep_blank_values=True)
-        if not key.lower().startswith("utm_")
-    ]
-    query = urlencode(filtered_query, doseq=True)
-    return urlunsplit((parts.scheme, parts.netloc, parts.path, query, ""))
+    """Normalize links consistently with persisted paper identities."""
+    return canonical_url(url)

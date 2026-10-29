@@ -1,22 +1,21 @@
 # Paper Digest
 
-A Python tool for automatically fetching and digesting research papers from multiple sources (arXiv, Nature Communications, APS Physical Review Letters, Nature journal), with email notifications for papers matching your research keywords.
+A Python tool for automatically fetching and digesting research papers from multiple sources (arXiv, Nature Communications, APS Physical Review Letters, Nature journal), with local review and accept/skip tracking for papers matching your research keywords.
 
 ## Features
 
 - 📄 **Multi-source fetching**: Retrieves papers from arXiv, Nature Communications, APS PRL, and Nature journal
 - 🔍 **Keyword filtering**: Filters papers based on customizable research keywords
-- 📧 **Email notifications**: Sends digest emails with source statistics and relevant papers
-- 💾 **State tracking**: Maintains history of seen papers to avoid duplicates
+- 💾 **State tracking**: Deduplicates DOI/arXiv identifiers and URLs, preserving metadata for later review
+- ✅ **Paper selections**: Records explicit accept/skip decisions for each paper
 - ⏰ **Automated scheduling**: Supports cron (Linux/macOS) and Task Scheduler (Windows)
 - 🧪 **Tested**: Includes comprehensive unit and integration tests
-- 📊 **Source statistics**: Email digest shows how many papers were found from each source
+- 📊 **Source statistics**: Fetch logs show per-source matches; local status shows outcomes
 
 ## Prerequisites
 
 - Python 3.10 or higher
 - macOS, Linux, or Windows
-- SMTP email account (for sending notifications)
 
 ## Installation
 
@@ -59,14 +58,6 @@ copy .env.example .env
 Edit `.env` and fill in your settings:
 
 ```env
-# SMTP Configuration
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=your.email@gmail.com
-SMTP_PASSWORD=your_app_password
-EMAIL_FROM=your.email@gmail.com
-EMAIL_TO=recipient@example.com
-
 # Paper Sources
 ARXIV_URL=https://arxiv.org/list/cond-mat/new
 NATURE_URL=https://www.nature.com/ncomms.rss
@@ -87,15 +78,6 @@ KEYWORDS=spintronics,spin-orbit torque,antiferromagnet
 # User Agent
 USER_AGENT=Mozilla/5.0 (compatible; PaperDigest/1.0)
 ```
-
-### 4. Gmail App Password (if using Gmail)
-
-If using Gmail, you must use an App Password instead of your regular password:
-
-1. Go to [Google Account Security](https://myaccount.google.com/security)
-2. Enable **2-Step Verification**
-3. Search for **App Passwords** and create a new one
-4. Use the 16-character app password in `SMTP_PASSWORD`
 
 ### RSS Configuration
 
@@ -148,9 +130,65 @@ python run.py
 The tool will:
 1. Fetch papers from all configured sources (arXiv, Nature Communications, APS PRL, Nature journal)
 2. Filter by your keywords
-3. Check against previously seen papers
-4. Send an email with new matching papers, including source statistics
-5. Update the state file
+3. Deduplicate discoveries against stored papers and legacy history
+4. Save matching metadata and each source's fetch outcome for local review
+
+Exit status is `0` when all source checks and state writes succeed, and `1` when
+any source fails, coverage is partial, or state persistence fails. Healthy sources
+still contribute papers when another source fails. Run `python run.py review`
+to read pending papers and `python run.py status` to inspect source outcomes.
+
+### Review and Accept/Skip
+
+These commands use local metadata only and do not fetch sources:
+
+```bash
+python run.py review                       # Undecided papers
+python run.py review --web                 # Interactive browser window
+python run.py review --web --no-browser    # Print the local URL for manual opening
+python run.py review --status accepted
+python run.py review --status skipped
+python run.py review --status all
+python run.py status                       # Source outcomes and selection counts
+python run.py decide PAPER_ID accept
+python run.py decide PAPER_ID skip
+```
+
+Replace `PAPER_ID` with the exact `p-...` Review ID shown in the review listing. IDs remain stable after discovery, even when later metadata adds
+a DOI. Every paper starts `pending`; leaving it unanswered keeps it pending.
+Only an explicit `decide` command or **Save decisions** in the review window
+changes a selection. A later explicit decision can correct an
+earlier one, with timestamped history retained. Accept/skip records your selection
+without triggering downloads. No PDFs, Markdown archives, or article bodies are saved.
+
+### Browser Review Window
+
+Run `venv/bin/python run.py review --web` on WSL/Linux (or
+`venv\Scripts\python.exe run.py review --web` on Windows). This opens all currently
+pending papers in one scrollable browser window, with titles, source links,
+authors, dates, matched keywords, and exact review IDs. No sources are fetched.
+The window uses Python's standard library and bundled HTML/CSS/JavaScript;
+no additional packages, external fonts, or hosted service are needed.
+
+Choose **Leave pending**, **Accept**, or **Skip** beside each paper, then click
+**Save decisions**. Unselected papers stay pending, and choosing Leave pending
+clears an unsaved choice. Draft choices live only in that tab: closing or
+reloading it discards them. Saved rows show their confirmed status and are
+disabled; use `decide` for later corrections. The page reports partial saves
+if a write fails, and retries do not duplicate already matching decisions.
+
+Keep the terminal process running while using the window; press **Ctrl+C** to
+stop it. The server listens only on `127.0.0.1`, uses a randomly assigned port
+and a session token, and prints the complete URL. If WSL cannot open your browser,
+paste that URL into your Windows browser, or use `--no-browser` when launching
+through an agent. This URL is usable only while that server is running.
+
+The session includes the pending papers present at startup and keeps its row
+numbers stable after saves. Restart it to include later discoveries. A changed
+decision in another tab or CLI is never silently overwritten: reload to inspect
+the current state. Each read/save briefly acquires the existing state lock;
+the lock is not held while you read papers. Missing or empty state reports that
+there are no pending papers, without creating a ledger.
 
 ### Automated Scheduling
 
@@ -205,7 +243,10 @@ paper_digest/
 │   ├── __init__.py        # Package initialization
 │   ├── config.py          # Configuration management
 │   ├── models.py          # Data models
+│   ├── identity.py        # DOI, arXiv and URL identity matching
 │   ├── storage.py         # State persistence
+│   ├── review_web.py      # Local browser review server
+│   ├── web/               # Bundled review HTML, CSS and JavaScript
 │   ├── fetchers/          # Paper fetchers
 │   │   ├── __init__.py
 │   │   ├── arxiv.py       # arXiv fetcher
@@ -213,20 +254,19 @@ paper_digest/
 │   │   ├── aps_prl_rss.py # APS PRL RSS fetcher
 │   │   ├── nature_journal_rss.py # Nature journal RSS fetcher
 │   │   ├── rss.py         # RSS base fetcher
+│   │   ├── rss_feeds.py   # Additional RSS feeds, checked independently
 │   │   └── common.py      # Common utilities
-│   ├── emailer.py         # Email notifications
 │   └── runner.py          # Main orchestration logic
 ├── tests/                 # Test suite
 │   ├── test_config.py
 │   ├── test_models.py
 │   ├── test_storage.py
-│   ├── test_emailer.py
 │   ├── test_runner.py
 │   ├── test_integration.py
 │   └── test_fetchers/
 │       └── ...
 ├── state/                 # State data (auto-created)
-│   └── seen_papers.json   # Track processed papers
+│   └── seen_papers.json   # Metadata, selections and source checks
 ├── run.py                 # Entry point
 ├── requirements.txt       # Python dependencies
 ├── .env.example          # Environment configuration template
@@ -246,7 +286,6 @@ pytest
 - **`fetchers/`**: Source-specific paper fetching logic (arXiv, Nature Communications, APS PRL, Nature journal)
 - **`models.py`**: Data structures for papers
 - **`storage.py`**: JSON-based state persistence
-- **`emailer.py`**: SMTP email composition and sending with source statistics
 - **`runner.py`**: Main workflow orchestration
 - **`tests/`**: Unit and integration tests
 
@@ -273,28 +312,63 @@ Configure source URLs in `.env`:
 
 ### State Management
 
-The state file (`state/seen_papers.json`) automatically tracks processed papers:
-- Created on first run
-- Updated after each execution
-- Prevents duplicate notifications
-- **Do not delete** unless you want to reset the paper history
+The version 3 ledger at `state/seen_papers.json` stores discovered papers,
+source checks, and explicit review decisions. Metadata remains available after
+papers disappear from their source feeds, without a review display limit.
+Fetching or rediscovering a paper never changes its accept/skip decision.
 
-### Email Notifications
+Existing `{"seen_links": [...]}` files remain legacy exclusions. Their URLs are
+normalized for matching; they do not become invented decisions or new review
+records. Version 2 ledgers migrate on the next write, preserving all paper IDs,
+metadata, aliases, decisions, and source history while removing obsolete delivery
+fields. Previously emailed and unsent papers alike remain available for review.
 
-Each digest email includes:
-- List of all checked sources
-- Total number of related papers found
-- Count of papers from each source
-- Full details of matching papers
+Back up state before upgrading. After migration, use the updated program: older
+versions cannot preserve the new ledger fields. Corrupt or unsupported state
+stops the operation and is preserved for recovery instead of resetting history.
+Email notification support and SMTP configuration have been removed; existing
+`SMTP_*` and `EMAIL_*` variables are ignored and are no longer required.
+
+Matching uses explicit DOI metadata, DOI resolver and recognized APS/Nature
+article URLs, version-independent arXiv identifiers, and normalized URL aliases.
+URL normalization removes fragments and common tracking parameters while
+retaining identifying query parameters. Titles alone do not establish identity.
+A preprint and journal article merge only when supplied metadata connects them;
+missing identifiers can still leave duplicates. Conflicting existing identities
+stop the run for reconciliation instead of overwriting decisions.
+
+Writes use atomic replacement, and a local `.lock` file prevents concurrent
+digest/review commands. Run only one computer at a time and let OneDrive finish
+synchronizing before switching. The local lock is not a distributed lock. If a
+crash leaves a lock, inspect its PID and verify no process is active before
+manually removing it. Do not delete the ledger unless you intend to reset history.
+
+### Fetch Coverage and Dates
+
+Each source, including each additional RSS feed, has its own last attempt,
+last successful check, outcome, error, and matching-paper count. Successful
+timestamps use the run's start time. Failed or partial checks retain the previous
+successful timestamp; changing a source URL starts that endpoint's history anew.
+Malformed feeds, dropped invalid entries, `RSS_MAX_ENTRIES` truncation, and
+detected arXiv pagination are reported as incomplete. Valid parsed candidates
+from partial results can still be saved for review.
+
+The current sources expose snapshots, not historical date-window searches. Every
+run rechecks the available snapshot, including old, same-day, delayed, and
+undated entries; the successful-check timestamp is diagnostic, **not a publication
+date cutoff**. This deliberately preserves overlap without dropping late items.
+No historical backfill or pagination is performed. Feed retention, index delays,
+entry limits, and time between runs can leave gaps; a successful check does not
+claim exhaustive publication-date coverage. Increase `RSS_MAX_ENTRIES` if that
+cap causes partial checks (`RSS_MAX_ENTRIES` must be positive).
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **No email received**: Check your SMTP credentials and ensure your email provider allows SMTP access.
-2. **No papers found**: Verify your keywords are correct and the source URLs are accessible.
-3. **Cron not running**: On macOS, check that cron is enabled: `launchctl list | grep cron`. On Linux: `systemctl status cron`.
-4. **RSS feeds not updating**: Check that the RSS URLs are correct and accessible. Some feeds may have rate limits.
+1. **No papers found**: Verify your keywords are correct and the source URLs are accessible.
+2. **Cron not running**: On macOS, check that cron is enabled: `launchctl list | grep cron`. On Linux: `systemctl status cron`.
+3. **RSS feeds not updating**: Check that the RSS URLs are correct and accessible. Some feeds may have rate limits.
 
 ### Logs
 
@@ -308,10 +382,8 @@ python run.py >> /path/to/paper_digest/cron.log 2>&1
 Contributions are welcome! Areas for improvement:
 
 - Additional paper sources (other journals, preprint servers)
-- Customizable email templates
 - Web interface for paper management
 - Advanced filtering options
-- Push notifications (mobile, desktop)
 
 ## License
 

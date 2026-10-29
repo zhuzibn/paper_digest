@@ -11,6 +11,7 @@ class PaperDict(TypedDict):
     published_date: str
     source: str
     keywords_matched: list[str]
+    doi: str
 
 
 @dataclass(eq=False)
@@ -21,6 +22,7 @@ class Paper:
     published_date: str
     source: str
     keywords_matched: list[str] = field(default_factory=list)
+    doi: str = ""
 
     def __post_init__(self) -> None:
         self.link = self._normalize_link(self.link)
@@ -45,6 +47,7 @@ class Paper:
             "published_date": self.published_date,
             "source": self.source,
             "keywords_matched": self.keywords_matched,
+            "doi": self.doi,
         }
 
     @classmethod
@@ -56,4 +59,13 @@ class Paper:
             published_date=data["published_date"],
             source=data["source"],
             keywords_matched=data.get("keywords_matched", []),
+            doi=data.get("doi", ""),
         )
+
+
+@dataclass
+class FetchResult:
+    """Matching metadata and any incomplete-coverage reason for one source."""
+
+    papers: list[Paper] = field(default_factory=list)
+    error: str = ""

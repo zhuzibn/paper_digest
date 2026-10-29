@@ -1,49 +1,55 @@
 # pyright: reportMissingImports=false, reportUnknownVariableType=false, reportUnknownParameterType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false
 
-import logging
-
 import requests
 from bs4 import BeautifulSoup
 
 from paper_digest.config import Config
 from paper_digest.fetchers.common import match_keywords, normalize_date
+from paper_digest.models import FetchResult
 from paper_digest.models import Paper
-
-logger = logging.getLogger(__name__)
 
 
 class ArxivFetcher:
-    def __init__(self, config: Config):
+    def __init__(self, config: Config) -> None:
         self.config: Config = config
 
-    def fetch(self) -> list[Paper]:
-        try:
-            response = requests.get(
-                self.config.arxiv_url,
-                headers={"User-Agent": self.config.user_agent},
-                timeout=30,
-            )
-            response.raise_for_status()
-        except requests.RequestException:
-            logger.exception("Failed to fetch arXiv page")
-            return []
-
+    def fetch(self) -> FetchResult:
+        """Read the current listing; malformed responses are fetch failures."""
+        response = requests.get(
+            self.config.arxiv_url,
+            headers={"User-Agent": self.config.user_agent},
+            timeout=30,
+        )
+        response.raise_for_status()
         return self._parse_html(response.text)
 
-    def _parse_html(self, html_content: str) -> list[Paper]:
+    def _parse_html(self, html_content: str) -> FetchResult:
         soup = BeautifulSoup(html_content, "lxml")
         papers: list[Paper] = []
 
         dts = soup.select("dl dt")
         dds = soup.select("dl dd")
 
+        errors: list[str] = []
+        if not dts and not dds:
+            # A recognized empty listing is different from a login/error page.
+            if "No updates" in soup.get_text() or "No new submissions" in soup.get_text():
+                return FetchResult()
+            raise ValueError("arXiv response contains no recognizable listing")
+        if len(dts) != len(dds):
+            errors.append("arXiv listing has unmatched metadata blocks")
+        if soup.select("a[href*='skip=']"):
+            errors.append("arXiv listing is paginated; only this page was checked")
+
         for dt, dd in zip(dts, dds):
             link_elem = dt.select_one("a[href*='/abs/']")
             if link_elem is None:
+                errors.append("arXiv entry has no abstract link")
                 continue
 
             href_obj: object = link_elem.get("href", "")
             if not isinstance(href_obj, str) or not href_obj:
+                errors.append("arXiv entry has an invalid abstract link")
                 continue
 
             href = href_obj
@@ -55,6 +61,10 @@ class ArxivFetcher:
                 title = (
                     title_elem.get_text(" ", strip=True).replace("Title:", "").strip()
                 )
+
+            if not title:
+                errors.append("arXiv entry has no title")
+                continue
 
             abstract = ""
             abstract_elem = dd.select_one(".list-abstract") or dd.select_one(
@@ -89,7 +99,7 @@ class ArxivFetcher:
                 )
             )
 
-        return papers
+        return FetchResult(papers, "; ".join(dict.fromkeys(errors)))
 
     def _match_keywords(
         self, title: str, keywords: list[str], abstract: str = ""

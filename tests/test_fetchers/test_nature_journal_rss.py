@@ -3,17 +3,12 @@
 from unittest.mock import Mock, patch
 
 from paper_digest.config import Config
+from paper_digest.fetchers.rss import FeedResult
 from paper_digest.fetchers.nature_journal_rss import NatureJournalRssFetcher
 
 
 def _config() -> Config:
     return Config(
-        smtp_host="",
-        smtp_port=587,
-        smtp_user="",
-        smtp_password="",
-        email_from="",
-        email_to="",
         arxiv_url="https://arxiv.org/list/cond-mat/new",
         nature_url="https://www.nature.com/subjects/physical-sciences/ncomms",
         user_agent="PaperDigestTest/1.0",
@@ -28,7 +23,7 @@ def _config() -> Config:
 def test_fetch_matches_keywords_and_builds_nature_journal_paper(
     mock_fetch: Mock,
 ) -> None:
-    mock_fetch.return_value = [
+    mock_fetch.return_value = FeedResult([
         {
             "title": "Materials advances for storage",
             "link": "https://www.nature.com/articles/s41586-024-12345",
@@ -38,10 +33,10 @@ def test_fetch_matches_keywords_and_builds_nature_journal_paper(
             "categories": ["Research Highlights"],
             "raw": {},
         }
-    ]
+    ])
 
     config = _config()
-    papers = NatureJournalRssFetcher(config).fetch()
+    papers = NatureJournalRssFetcher(config).fetch().papers
 
     mock_fetch.assert_called_once_with(
         config.nature_journal_rss_url,
@@ -58,7 +53,7 @@ def test_fetch_matches_keywords_and_builds_nature_journal_paper(
 
 @patch("paper_digest.fetchers.nature_journal_rss.fetch_feed_entries")
 def test_fetch_applies_category_allowlist_when_configured(mock_fetch: Mock) -> None:
-    mock_fetch.return_value = [
+    mock_fetch.return_value = FeedResult([
         {
             "title": "Spintronics roundup",
             "link": "https://www.nature.com/articles/s41586-024-20000",
@@ -77,12 +72,12 @@ def test_fetch_applies_category_allowlist_when_configured(mock_fetch: Mock) -> N
             "categories": ["Comment"],
             "raw": {},
         },
-    ]
+    ])
 
     config = _config()
     config.nature_journal_category_allowlist = ["news", "research highlight"]
 
-    papers = NatureJournalRssFetcher(config).fetch()
+    papers = NatureJournalRssFetcher(config).fetch().papers
 
     assert len(papers) == 1
     assert papers[0].title == "Spintronics roundup"
@@ -92,7 +87,7 @@ def test_fetch_applies_category_allowlist_when_configured(mock_fetch: Mock) -> N
 def test_fetch_drops_entries_missing_title_or_link_even_if_keyword_matches(
     mock_fetch: Mock,
 ) -> None:
-    mock_fetch.return_value = [
+    mock_fetch.return_value = FeedResult([
         {
             "title": "",
             "link": "https://www.nature.com/articles/s41586-024-30000",
@@ -111,8 +106,8 @@ def test_fetch_drops_entries_missing_title_or_link_even_if_keyword_matches(
             "categories": ["news"],
             "raw": {},
         },
-    ]
+    ])
 
-    papers = NatureJournalRssFetcher(_config()).fetch()
+    papers = NatureJournalRssFetcher(_config()).fetch().papers
 
     assert papers == []

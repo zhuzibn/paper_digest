@@ -10,7 +10,10 @@ paper_digest/
 │   ├── __init__.py        # Package initialization  
 │   ├── config.py          # Configuration management using dataclasses
 │   ├── models.py          # Data models (Paper class with TypedDict)
+│   ├── identity.py        # DOI, arXiv and normalized URL identities
 │   ├── storage.py         # JSON-based state persistence
+│   ├── review_web.py      # Loopback browser review server
+│   ├── web/               # Bundled review HTML, CSS and JavaScript
 │   ├── fetchers/          # Paper source fetchers
 │   │   ├── __init__.py
 │   │   ├── arxiv.py       # arXiv fetcher implementation
@@ -19,13 +22,14 @@ paper_digest/
 │   │   ├── nature_journal_rss.py # Nature journal RSS fetcher
 │   │   ├── rss.py         # Base RSS fetcher utilities
 │   │   └── common.py      # Shared utilities (keyword matching, date parsing)
-│   ├── emailer.py         # Email notification system with HTML/text multipart
 │   └── runner.py          # Main orchestration logic
 ├── tests/                 # Comprehensive test suite
 │   ├── test_config.py
 │   ├── test_models.py  
 │   ├── test_storage.py
-│   ├── test_emailer.py
+│   ├── test_identity.py
+│   ├── test_review.py
+│   ├── test_review_web.py
 │   ├── test_runner.py
 │   ├── test_integration.py
 │   └── test_fetchers/     # Source-specific fetcher tests
@@ -36,7 +40,7 @@ paper_digest/
 │       ├── test_rss.py
 │       └── test_common.py
 ├── state/                 # Runtime state directory (excluded from git)
-│   └── seen_papers.json   # Tracks processed papers to prevent duplicates
+│   └── seen_papers.json   # Tracks paper metadata, source checks and review decisions
 ├── run.py                 # Entry point script
 ├── requirements.txt       # Core dependencies
 ├── .env.example          # Environment configuration template
@@ -70,18 +74,18 @@ pytest
 
 **Run specific test file:**
 ```bash
-pytest tests/test_emailer.py
+pytest tests/test_runner.py
 ```
 
 **Run specific test function:**
 ```bash
-pytest tests/test_emailer.py::test_send_digest_sends_multipart_email_with_expected_content
+pytest tests/test_runner.py::test_discovery_stays_pending_and_survives_leaving_feed
 ```
 
 **Run tests matching keyword pattern:**
 ```bash
-pytest -k "emailer"                     # Runs all tests with 'emailer' in name
-pytest -k "test_send_digest"            # Runs tests matching this substring
+pytest -k "review"                      # Runs review-command tests
+pytest -k "test_discovery"            # Runs tests matching this substring
 pytest -k "not integration"             # Excludes integration tests
 ```
 
@@ -185,9 +189,11 @@ Follow this exact import order:
 
 ## State Management
 - **State directory**: `state/` excluded from git (in `.gitignore`)
-- **JSON persistence**: Simple JSON file storage (`seen_papers.json`)
+- **JSON persistence**: Version 3 ledger (`seen_papers.json`), with version 2 migration and legacy `seen_links` exclusions
 - **Thread safety**: Not required (single-threaded application)
-- **Error handling**: Fail gracefully if state file is corrupted/malformed
+- **Error handling**: Stop and preserve corrupted/malformed state; never reset history automatically
+- **Review decisions**: Fetching only saves metadata. Only explicit accept/skip commands change selections.
+- **Scope**: Local paper review only; no email delivery or SMTP configuration.
 
 ## Dependencies
 Required packages from `requirements.txt`:
@@ -207,17 +213,16 @@ Required packages from `requirements.txt`:
 - **Caching**: Leverage built-in state tracking to avoid reprocessing
 
 ## Security Guidelines  
-- **Environment variables**: Never hardcode credentials (SMTP passwords, API keys)
+- **Environment variables**: Never hardcode credentials (API keys, passwords)
 - **Input validation**: Sanitize all external inputs (URLs, user data)
 - **HTTPS only**: Ensure all external requests use HTTPS
 - **Dependency updates**: Keep dependencies current to address security vulnerabilities
 
 ## Troubleshooting Common Issues
-1. **No email received**: Verify SMTP credentials and email provider settings
-2. **No papers found**: Check keywords, source URLs, and network connectivity  
-3. **Cron not running**: Verify absolute paths and cron service status
-4. **RSS feed errors**: Confirm feed URLs are accessible and not rate-limited
-5. **Test failures**: Ensure virtual environment is activated and dependencies installed
+1. **No papers found**: Check keywords, source URLs, and network connectivity
+2. **Cron not running**: Verify absolute paths and cron service status
+3. **RSS feed errors**: Confirm feed URLs are accessible and not rate-limited
+4. **Test failures**: Ensure virtual environment is activated and dependencies installed
 
 ## Agent-Specific Instructions
 When making changes as an agentic coding agent:
@@ -225,6 +230,14 @@ When making changes as an agentic coding agent:
 2. **Follow existing patterns** exactly (import order, naming, error handling)
 5. **Verify type safety** - ensure pyright/linting passes
 6. **Test edge cases** - empty inputs, network failures, malformed data
+
+Browser review uses `venv/bin/python run.py review --web` and the existing
+locked storage decisions. Run `tests/test_review_web.py` with loopback socket
+access when changing it. Test browser saves against a disposable ledger copy;
+never create test decisions in the user's live ledger. All assets stay local.
+
+Update `CHANGELOG.md` for meaningful behavior changes or significant fixes,
+following the global changelog policy. Group related edits into one entry.
 
 # document errors and solutions
 

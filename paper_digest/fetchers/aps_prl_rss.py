@@ -1,35 +1,28 @@
 # pyright: reportMissingImports=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false
 
-import logging
 import re
-
-import requests
 
 from paper_digest.config import Config
 from paper_digest.fetchers.common import match_keywords, normalize_date
 from paper_digest.fetchers.rss import fetch_feed_entries
+from paper_digest.models import FetchResult
 from paper_digest.models import Paper
-
-logger = logging.getLogger(__name__)
 
 
 class ApsPrlRssFetcher:
-    def __init__(self, config: Config):
+    def __init__(self, config: Config) -> None:
         self.config: Config = config
 
-    def fetch(self) -> list[Paper]:
-        try:
-            entries = fetch_feed_entries(
-                self.config.aps_prl_rss_url,
-                self.config.user_agent,
-                max_entries=self.config.rss_max_entries,
-            )
-        except requests.RequestException:
-            logger.exception("Failed to fetch APS PRL RSS feed")
-            return []
+    def fetch(self) -> FetchResult:
+        """Fetch matching papers and report partial feed coverage."""
+        feed = fetch_feed_entries(
+            self.config.aps_prl_rss_url,
+            self.config.user_agent,
+            max_entries=self.config.rss_max_entries,
+        )
 
         papers: list[Paper] = []
-        for entry in entries:
+        for entry in feed.entries:
             title = str(entry.get("title", "")).strip()
             link = str(entry.get("link", "")).strip()
             if not title or not link:
@@ -63,10 +56,11 @@ class ApsPrlRssFetcher:
                     published_date=published,
                     source="aps-prl",
                     keywords_matched=keywords_matched,
+                    doi=entry.get("doi", ""),
                 )
             )
 
-        return papers
+        return FetchResult(papers, feed.error)
 
     def _matches_section_filter(self, entry: object, raw: object) -> bool:
         section_filter = self.config.aps_prl_section_filter.strip().lower()

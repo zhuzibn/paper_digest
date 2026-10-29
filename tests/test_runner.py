@@ -1,215 +1,139 @@
-# pyright: reportMissingImports=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false
+"""Exercise fetch outcomes with real persisted state and mocked sources."""
 
-from unittest.mock import call, patch
+from unittest.mock import Mock
 
+import pytest
+
+from paper_digest import runner
 from paper_digest.config import Config
+from paper_digest.models import FetchResult
 from paper_digest.models import Paper
+from paper_digest.storage import PaperStorage
 
 
 def _config() -> Config:
     return Config(
-        smtp_host="smtp.example.com",
-        smtp_port=587,
-        smtp_user="user@example.com",
-        smtp_password="secret",
-        email_from="from@example.com",
-        email_to="to@example.com",
         arxiv_url="https://arxiv.org/list/cond-mat/new",
-        nature_url="https://www.nature.com/subjects/physical-sciences/ncomms",
-        user_agent="PaperDigestTests/1.0",
-        keywords=["spin-orbit torque", "mram"],
+        nature_url="https://www.nature.com/ncomms.rss", user_agent="Test/1.0",
+        keywords=["mram"],
     )
 
 
-def _paper(link: str, source: str = "arxiv") -> Paper:
-    return Paper(
-        title="Spin-orbit torque in MRAM",
-        authors=["Ada Lovelace", "Grace Hopper"],
-        link=link,
-        published_date="2024-01-15",
-        source=source,
-        keywords_matched=["spin-orbit torque", "mram"],
-    )
+def _paper(link: str = "https://arxiv.org/abs/2401.00001v1", source: str = "arxiv") -> Paper:
+    return Paper("MRAM", ["A"], link, "2024-01-15", source, ["mram"])
 
 
-@patch("paper_digest.runner.Emailer")
-@patch("paper_digest.runner.PaperStorage")
-@patch("paper_digest.runner.NatureJournalRssFetcher")
-@patch("paper_digest.runner.ApsPrlRssFetcher")
-@patch("paper_digest.runner.NatureFetcher")
-@patch("paper_digest.runner.ArxivFetcher")
-def test_run_digest_sends_unseen_and_marks_seen_on_success(
-    mock_arxiv_fetcher,
-    mock_nature_fetcher,
-    mock_aps_prl_rss_fetcher,
-    mock_nature_journal_rss_fetcher,
-    mock_storage_cls,
-    mock_emailer_cls,
-):
-    from paper_digest.runner import run_digest
-
-    seen_paper = _paper("https://arxiv.org/abs/2401.00001")
-    new_paper = _paper("https://www.nature.com/articles/s41467-024-00001", "nature")
-
-    mock_arxiv_fetcher.return_value.fetch.return_value = [seen_paper]
-    mock_nature_fetcher.return_value.fetch.return_value = [new_paper]
-    mock_aps_prl_rss_fetcher.return_value.fetch.return_value = []
-    mock_nature_journal_rss_fetcher.return_value.fetch.return_value = []
-    storage = mock_storage_cls.return_value
-    storage.is_seen.side_effect = [True, False]
-    emailer = mock_emailer_cls.return_value
-    emailer.send_digest.return_value = True
-
-    code = run_digest(_config())
-
-    assert code == 0
-    emailer.send_digest.assert_called_once_with([new_paper])
-    storage.mark_seen.assert_called_once_with(new_paper)
+@pytest.fixture
+def workflow(tmp_path, monkeypatch):
+    state_file = tmp_path / "state.json"
+    monkeypatch.setattr(runner, "STATE_FILE", state_file)
+    fetches = []
+    for cls in (runner.ArxivFetcher, runner.NatureFetcher, runner.ApsPrlRssFetcher,
+                runner.NatureJournalRssFetcher):
+        fetch = Mock(return_value=FetchResult())
+        monkeypatch.setattr(cls, "fetch", fetch)
+        fetches.append(fetch)
+    return state_file, fetches
 
 
-@patch("paper_digest.runner.Emailer")
-@patch("paper_digest.runner.PaperStorage")
-@patch("paper_digest.runner.NatureJournalRssFetcher")
-@patch("paper_digest.runner.ApsPrlRssFetcher")
-@patch("paper_digest.runner.NatureFetcher")
-@patch("paper_digest.runner.ArxivFetcher")
-def test_run_digest_does_not_mark_seen_when_email_fails(
-    mock_arxiv_fetcher,
-    mock_nature_fetcher,
-    mock_aps_prl_rss_fetcher,
-    mock_nature_journal_rss_fetcher,
-    mock_storage_cls,
-    mock_emailer_cls,
-):
-    from paper_digest.runner import run_digest
+def test_discovery_stays_pending_and_survives_leaving_feed(workflow):
+    state_file, fetches = workflow
+    fetches[0].return_value = FetchResult([_paper()])
+    assert runner.run_digest(_config()) == 0
+    records = PaperStorage(state_file).state["papers"]
+    assert len(records) == 1
+    assert next(iter(records.values()))["decision"] == "pending"
 
-    new_paper = _paper("https://arxiv.org/abs/2401.00001")
-    mock_arxiv_fetcher.return_value.fetch.return_value = [new_paper]
-    mock_nature_fetcher.return_value.fetch.return_value = []
-    mock_aps_prl_rss_fetcher.return_value.fetch.return_value = []
-    mock_nature_journal_rss_fetcher.return_value.fetch.return_value = []
-    storage = mock_storage_cls.return_value
-    storage.is_seen.return_value = False
-    emailer = mock_emailer_cls.return_value
-    emailer.send_digest.return_value = False
-
-    code = run_digest(_config())
-
-    assert code == 1
-    emailer.send_digest.assert_called_once_with([new_paper])
-    storage.mark_seen.assert_not_called()
+    fetches[0].return_value = FetchResult()
+    assert runner.run_digest(_config()) == 0
+    assert PaperStorage(state_file).state["papers"] == records
 
 
-@patch("paper_digest.runner.Emailer")
-@patch("paper_digest.runner.PaperStorage")
-@patch("paper_digest.runner.NatureJournalRssFetcher")
-@patch("paper_digest.runner.ApsPrlRssFetcher")
-@patch("paper_digest.runner.NatureFetcher")
-@patch("paper_digest.runner.ArxivFetcher")
-def test_run_digest_returns_zero_when_no_new_papers(
-    mock_arxiv_fetcher,
-    mock_nature_fetcher,
-    mock_aps_prl_rss_fetcher,
-    mock_nature_journal_rss_fetcher,
-    mock_storage_cls,
-    mock_emailer_cls,
-):
-    from paper_digest.runner import run_digest
-
-    seen_paper = _paper("https://arxiv.org/abs/2401.00001")
-    mock_arxiv_fetcher.return_value.fetch.return_value = [seen_paper]
-    mock_nature_fetcher.return_value.fetch.return_value = []
-    mock_aps_prl_rss_fetcher.return_value.fetch.return_value = []
-    mock_nature_journal_rss_fetcher.return_value.fetch.return_value = []
-    storage = mock_storage_cls.return_value
-    storage.is_seen.return_value = True
-
-    code = run_digest(_config())
-
-    assert code == 0
-    mock_emailer_cls.return_value.send_digest.assert_not_called()
-    storage.mark_seen.assert_not_called()
+def test_duplicate_doi_and_arxiv_versions_are_stored_only_once(workflow):
+    state_file, fetches = workflow
+    fetches[0].return_value = FetchResult([
+        _paper(), _paper("http://export.arxiv.org/pdf/2401.00001v2.pdf"),
+    ])
+    fetches[1].return_value = FetchResult([
+        _paper("https://doi.org/10.1103/PhysRevLett.1", "nature"),
+    ])
+    fetches[2].return_value = FetchResult([
+        _paper("https://journals.aps.org/prl/abstract/10.1103/PhysRevLett.1", "aps-prl"),
+    ])
+    assert runner.run_digest(_config()) == 0
+    assert len(PaperStorage(state_file).state["papers"]) == 2
+    assert runner.run_digest(_config()) == 0
+    assert len(PaperStorage(state_file).state["papers"]) == 2
 
 
-@patch("paper_digest.runner.Emailer")
-@patch("paper_digest.runner.PaperStorage")
-@patch("paper_digest.runner.NatureJournalRssFetcher")
-@patch("paper_digest.runner.ApsPrlRssFetcher")
-@patch("paper_digest.runner.NatureFetcher")
-@patch("paper_digest.runner.ArxivFetcher")
-def test_run_digest_continues_if_one_fetcher_raises(
-    mock_arxiv_fetcher,
-    mock_nature_fetcher,
-    mock_aps_prl_rss_fetcher,
-    mock_nature_journal_rss_fetcher,
-    mock_storage_cls,
-    mock_emailer_cls,
-):
-    from paper_digest.runner import run_digest
-
-    new_paper = _paper("https://www.nature.com/articles/s41467-024-00001", "nature")
-    mock_arxiv_fetcher.return_value.fetch.side_effect = RuntimeError("arxiv boom")
-    mock_nature_fetcher.return_value.fetch.return_value = [new_paper]
-    mock_aps_prl_rss_fetcher.return_value.fetch.return_value = []
-    mock_nature_journal_rss_fetcher.return_value.fetch.return_value = []
-    storage = mock_storage_cls.return_value
-    storage.is_seen.return_value = False
-    emailer = mock_emailer_cls.return_value
-    emailer.send_digest.return_value = True
-
-    code = run_digest(_config())
-
-    assert code == 0
-    emailer.send_digest.assert_called_once_with([new_paper])
-    storage.mark_seen.assert_called_once_with(new_paper)
+def test_partial_and_failed_sources_preserve_last_success_and_save_candidates(workflow):
+    state_file, fetches = workflow
+    assert runner.run_digest(_config()) == 0
+    old = PaperStorage(state_file).state["sources"]
+    fetches[0].side_effect = OSError("offline")
+    fetches[1].return_value = FetchResult([_paper(source="nature")], "truncated feed")
+    assert runner.run_digest(_config()) == 1
+    current = PaperStorage(state_file).state["sources"]
+    for source in ("arxiv", "nature"):
+        assert current[source]["last_success"] == old[source]["last_success"]
+    assert current["arxiv"]["status"] == "failed"
+    assert current["nature"]["status"] == "partial"
+    assert current["aps-prl"]["status"] == "success"
+    assert len(PaperStorage(state_file).state["papers"]) == 1
 
 
-@patch("paper_digest.runner.PaperStorage", side_effect=RuntimeError("fatal"))
-def test_run_digest_returns_one_on_fatal_error(_mock_storage_cls):
-    from paper_digest.runner import run_digest
+def test_empty_success_differs_from_failed_fetch(workflow):
+    state_file, fetches = workflow
+    fetches[0].side_effect = ValueError("not a feed")
+    assert runner.run_digest(_config()) == 1
+    sources = PaperStorage(state_file).state["sources"]
+    assert sources["arxiv"]["last_success"] == ""
+    assert sources["nature"]["last_success"]
 
-    code = run_digest(_config())
 
-    assert code == 1
+def test_each_additional_feed_has_an_independent_result(workflow, monkeypatch):
+    state_file, _ = workflow
+    config = _config()
+    config.rss_feeds = [("feed-a", "https://example.com/a"),
+                        ("feed-b", "https://example.com/b")]
+
+    def fetch(self):
+        if self.feed_id == "feed-a":
+            raise OSError("offline")
+        return FetchResult([_paper(source=self.feed_id)])
+
+    monkeypatch.setattr(runner.RssFeedFetcher, "fetch", fetch)
+    assert runner.run_digest(config) == 1
+    sources = PaperStorage(state_file).state["sources"]
+    assert sources["feed-a"]["status"] == "failed"
+    assert sources["feed-b"]["status"] == "success"
+    records = PaperStorage(state_file).state["papers"]
+    assert next(iter(records.values()))["paper"]["source"] == "feed-b"
 
 
-@patch("paper_digest.runner.Emailer")
-@patch("paper_digest.runner.PaperStorage")
-@patch("paper_digest.runner.NatureJournalRssFetcher")
-@patch("paper_digest.runner.ApsPrlRssFetcher")
-@patch("paper_digest.runner.NatureFetcher")
-@patch("paper_digest.runner.ArxivFetcher")
-def test_run_digest_includes_rss_fetchers_in_dedupe_and_send_flow(
-    mock_arxiv_fetcher,
-    mock_nature_fetcher,
-    mock_aps_prl_rss_fetcher,
-    mock_nature_journal_rss_fetcher,
-    mock_storage_cls,
-    mock_emailer_cls,
-):
-    from paper_digest.runner import run_digest
+def test_old_and_undated_discoveries_are_not_filtered_by_last_check(workflow):
+    state_file, fetches = workflow
+    assert runner.run_digest(_config()) == 0
+    paper = _paper()
+    paper.published_date = ""
+    fetches[0].return_value = FetchResult([paper, _paper("https://example.com/old")])
+    assert runner.run_digest(_config()) == 0
+    assert len(PaperStorage(state_file).state["papers"]) == 2
 
-    arxiv_seen = _paper("https://arxiv.org/abs/2401.00001", "arxiv")
-    prl_new = _paper(
-        "https://journals.aps.org/prl/abstract/10.1103/PhysRevLett.1", "aps-prl"
-    )
-    nature_rss_new = _paper(
-        "https://www.nature.com/articles/d41586-024-00001-1", "nature-journal"
-    )
 
-    mock_arxiv_fetcher.return_value.fetch.return_value = [arxiv_seen]
-    mock_nature_fetcher.return_value.fetch.return_value = []
-    mock_aps_prl_rss_fetcher.return_value.fetch.return_value = [prl_new]
-    mock_nature_journal_rss_fetcher.return_value.fetch.return_value = [nature_rss_new]
+def test_save_failure_preserves_previous_state(workflow, monkeypatch):
+    state_file, fetches = workflow
+    assert runner.run_digest(_config()) == 0
+    fetches[0].return_value = FetchResult([_paper()])
+    monkeypatch.setattr(PaperStorage, "save", Mock(side_effect=OSError("disk full")))
+    assert runner.run_digest(_config()) == 1
+    assert PaperStorage(state_file).state["papers"] == {}
 
-    storage = mock_storage_cls.return_value
-    storage.is_seen.side_effect = [True, False, False]
 
-    emailer = mock_emailer_cls.return_value
-    emailer.send_digest.return_value = True
-
-    code = run_digest(_config())
-
-    assert code == 0
-    emailer.send_digest.assert_called_once_with([prl_new, nature_rss_new])
-    assert storage.mark_seen.call_args_list == [call(prl_new), call(nature_rss_new)]
+def test_corrupted_state_stops_before_fetch(workflow):
+    state_file, fetches = workflow
+    state_file.write_text("{broken")
+    assert runner.run_digest(_config()) == 1
+    for fetch in fetches:
+        fetch.assert_not_called()
+    assert state_file.read_text() == "{broken"

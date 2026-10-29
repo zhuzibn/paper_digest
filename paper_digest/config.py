@@ -106,12 +106,6 @@ def _parse_rss_feeds(raw: str) -> tuple[list[tuple[str, str]], dict[str, str]]:
 
 @dataclass
 class Config:
-    smtp_host: str
-    smtp_port: int
-    smtp_user: str
-    smtp_password: str
-    email_from: str
-    email_to: str
     arxiv_url: str
     nature_url: str
     user_agent: str
@@ -149,12 +143,6 @@ class Config:
             rss_feeds, builtin_overrides = _parse_rss_feeds(rss_feed_raw)
 
         return cls(
-            smtp_host=os.getenv("SMTP_HOST", ""),
-            smtp_port=int(os.getenv("SMTP_PORT", "587")),
-            smtp_user=os.getenv("SMTP_USER", ""),
-            smtp_password=os.getenv("SMTP_PASSWORD", ""),
-            email_from=os.getenv("EMAIL_FROM", ""),
-            email_to=os.getenv("EMAIL_TO", ""),
             arxiv_url=os.getenv("ARXIV_URL", "https://arxiv.org/list/cond-mat/new"),
             nature_url=builtin_overrides.get(
                 "nature",

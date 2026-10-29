@@ -1,11 +1,14 @@
 # pyright: reportMissingImports=false, reportMissingTypeStubs=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false
 
+from dataclasses import dataclass
 from typing import TypedDict
+from urllib.parse import urlsplit
 
 import feedparser
 import requests
 
 from paper_digest.fetchers.common import canonicalize_link, normalize_date
+from paper_digest.identity import normalize_doi
 
 
 class NormalizedFeedEntry(TypedDict):
@@ -16,13 +19,25 @@ class NormalizedFeedEntry(TypedDict):
     summary: str
     categories: list[str]
     raw: object
+    doi: str
+
+
+@dataclass
+class FeedResult:
+    """Parsed entries plus a reason when the snapshot was only partly read."""
+
+    entries: list[NormalizedFeedEntry]
+    error: str = ""
 
 
 def fetch_feed_entries(
     url: str,
     user_agent: str,
     max_entries: int = 200,
-) -> list[NormalizedFeedEntry]:
+) -> FeedResult:
+    """Fetch a feed, retaining valid entries and reporting incomplete parsing."""
+    if max_entries < 1:
+        raise ValueError("RSS_MAX_ENTRIES must be positive")
     response = requests.get(
         url,
         headers={"User-Agent": user_agent},
@@ -30,12 +45,24 @@ def fetch_feed_entries(
     )
     response.raise_for_status()
     parsed_feed = feedparser.parse(response.text)
+    if not parsed_feed.version:
+        raise ValueError("Response is not a recognized RSS/Atom feed")
+    errors: list[str] = []
+    if parsed_feed.get("bozo"):
+        errors.append("Malformed feed: " + str(parsed_feed.get("bozo_exception")))
 
     normalized: list[NormalizedFeedEntry] = []
     for entry in parsed_feed.entries:
         title = str(entry.get("title", "")).strip()
-        link = canonicalize_link(str(entry.get("link", "")))
+        try:
+            link = canonicalize_link(str(entry.get("link", "")))
+            parts = urlsplit(link)
+            if parts.scheme not in {"http", "https"} or not parts.netloc:
+                link = ""
+        except ValueError:
+            link = ""
         if not title or not link:
+            errors.append("Feed contains entries without a title or link")
             continue
 
         published_raw = str(
@@ -87,9 +114,12 @@ def fetch_feed_entries(
                 "summary": summary,
                 "categories": categories,
                 "raw": entry,
+                "doi": next(
+                    (doi for key in ("prism_doi", "dc_identifier", "id")
+                     if (doi := normalize_doi(str(entry.get(key, ""))))), ""
+                ),
             }
         )
-        if len(normalized) >= max_entries:
-            break
-
-    return normalized
+    if len(normalized) > max_entries:
+        errors.append(f"Feed truncated by RSS_MAX_ENTRIES={max_entries}")
+    return FeedResult(normalized[:max_entries], "; ".join(dict.fromkeys(errors)))
