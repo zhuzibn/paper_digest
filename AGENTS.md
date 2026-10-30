@@ -235,6 +235,10 @@ Browser review uses `venv/bin/python run.py review --web` and the existing
 locked storage decisions. Run `tests/test_review_web.py` with loopback socket
 access when changing it. Test browser saves against a disposable ledger copy;
 never create test decisions in the user's live ledger. All assets stay local.
+When opening a review for the user, retain the running tool session and keep the
+agent turn active until `paper_review_completed` and normal process exit, then
+verify saved IDs and follow the skill's summary export. Do not ask for a second
+completion message. Failed saves, unsaved tab closure, and Ctrl+C are not success.
 
 Update `CHANGELOG.md` for meaningful behavior changes or significant fixes,
 following the global changelog policy. Group related edits into one entry.

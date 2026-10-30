@@ -7,12 +7,22 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler
 from http.server import ThreadingHTTPServer
 from pathlib import Path
+from typing import TypedDict
 from typing import cast
 
 from paper_digest.storage import locked_storage
 
 logger = logging.getLogger(__name__)
 ASSET_DIR = Path(__file__).with_name("web")
+
+
+class ReviewCompletion(TypedDict):
+    """Confirmed decisions for the papers in this review session only."""
+
+    event: str
+    accepted: list[str]
+    skipped: list[str]
+    pending: list[str]
 
 
 class ReviewServer(ThreadingHTTPServer):
@@ -22,6 +32,7 @@ class ReviewServer(ThreadingHTTPServer):
         self.state_file: Path = state_file
         self.token: str = secrets.token_urlsafe(32)
         self.paper_ids: list[str] = []
+        self.completion: ReviewCompletion | None = None
         if state_file.exists():
             with locked_storage(state_file) as storage:
                 self.paper_ids = [
@@ -132,6 +143,9 @@ class ReviewHandler(BaseHTTPRequestHandler):
             payload = json.loads(self.rfile.read(length))
             if not isinstance(payload, dict) or not isinstance(payload.get("decisions"), list):
                 raise ValueError("Expected a list of decisions")
+            finish = payload.get("finish", False)
+            if not isinstance(finish, bool):
+                raise ValueError("finish must be a boolean")
             decisions: dict[str, str] = {}
             for choice in payload["decisions"]:
                 if not isinstance(choice, dict):
@@ -145,13 +159,17 @@ class ReviewHandler(BaseHTTPRequestHandler):
         except (ValueError, UnicodeError) as exc:
             self._json(400, {"error": str(exc), "saved": saved})
             return
-        if not decisions:
+        if not decisions and not finish:
             self._json(200, {"saved": saved})
             return
         try:
             if not self.review.state_file.exists():
                 raise RuntimeError("The paper ledger is missing; no decisions were saved.")
             with locked_storage(self.review.state_file) as storage:
+                if self.review.completion is not None:
+                    raise RuntimeError("This review has already finished.")
+                if any(i not in storage.state["papers"] for i in self.review.paper_ids):
+                    raise RuntimeError("A review paper is missing. Restart the review.")
                 # Check every choice before writing, so a stale tab cannot overwrite
                 # a different decision made in another window or via the CLI.
                 for item_id, decision in decisions.items():
@@ -165,23 +183,40 @@ class ReviewHandler(BaseHTTPRequestHandler):
                     if storage.state["papers"][item_id]["decision"] != decision:
                         storage.decide(item_id, decision)
                     saved.append({"id": item_id, "decision": decision})
-            self._json(200, {"saved": saved})
+                if finish:
+                    records = storage.state["papers"]
+                    self.review.completion = ReviewCompletion(
+                        event="paper_review_completed",
+                        accepted=[i for i in self.review.paper_ids
+                                  if records[i]["decision"] == "accepted"],
+                        skipped=[i for i in self.review.paper_ids
+                                 if records[i]["decision"] == "skipped"],
+                        pending=[i for i in self.review.paper_ids
+                                 if records[i]["decision"] == "pending"],
+                    )
         except (OSError, ValueError, RuntimeError) as exc:
             logger.exception("Cannot save review decisions")
             # Each existing decide() call is atomic. Report the completed prefix
             # if a later write fails, so the page never claims a full batch saved.
             self._json(409, {"error": str(exc), "saved": saved})
+            return
+        try:
+            self._json(200, {"saved": saved, "completion": self.review.completion})
+        finally:
+            if finish:
+                # This handler runs on a different thread from serve_forever().
+                self.review.shutdown()
 
 
 def serve_review(state_file: Path, open_browser: bool = True) -> int:
-    """Run a loopback review session until Ctrl+C, without fetching any sources."""
+    """Wait for a confirmed finish or interruption, without fetching sources."""
     with ReviewServer(state_file) as server:
         if not server.paper_ids:
             print("No pending papers to review.")
             return 0
         url = f"{server.origin}/#{server.token}"
         print(f"Review {len(server.paper_ids)} pending papers: {url}", flush=True)
-        print("Keep this process running while reviewing. Press Ctrl+C to stop.", flush=True)
+        print("Click Save and finish review when done. Ctrl+C cancels waiting.", flush=True)
         if open_browser:
             try:
                 if not webbrowser.open(url):
@@ -192,4 +227,7 @@ def serve_review(state_file: Path, open_browser: bool = True) -> int:
             server.serve_forever()
         except KeyboardInterrupt:
             print("\nReview window stopped. Saved decisions are retained.")
+            return 130
+        if server.completion is not None:
+            print(json.dumps(server.completion), flush=True)
     return 0

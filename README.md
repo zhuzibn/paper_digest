@@ -156,7 +156,7 @@ python run.py decide PAPER_ID skip
 
 Replace `PAPER_ID` with the exact `p-...` Review ID shown in the review listing. IDs remain stable after discovery, even when later metadata adds
 a DOI. Every paper starts `pending`; leaving it unanswered keeps it pending.
-Only an explicit `decide` command or **Save decisions** in the review window
+Only an explicit `decide` command or **Save and finish review** in the review window
 changes a selection. A later explicit decision can correct an
 earlier one, with timestamped history retained. Accept/skip records your selection
 without triggering downloads. No PDFs, Markdown archives, or article bodies are saved.
@@ -171,14 +171,26 @@ The window uses Python's standard library and bundled HTML/CSS/JavaScript;
 no additional packages, external fonts, or hosted service are needed.
 
 Choose **Leave pending**, **Accept**, or **Skip** beside each paper, then click
-**Save decisions**. Unselected papers stay pending, and choosing Leave pending
+**Save and finish review**. Unselected papers stay pending, and choosing Leave pending
 clears an unsaved choice. Draft choices live only in that tab: closing or
 reloading it discards them. Saved rows show their confirmed status and are
 disabled; use `decide` for later corrections. The page reports partial saves
 if a write fails, and retries do not duplicate already matching decisions.
+You can also finish with every paper pending without changing the ledger.
 
-Keep the terminal process running while using the window; press **Ctrl+C** to
-stop it. The server listens only on `127.0.0.1`, uses a randomly assigned port
+After a successful finish, the server prints a JSON `paper_review_completed`
+event with this session's accepted/skipped/pending IDs and exits successfully.
+The page tries to close automatically; if your browser blocks this, close it
+manually. When launched with the updated `paper-tracker` skill, the active Codex
+task waits for that signal, verifies the saved choices, and refreshes the Markdown
+summary automatically. You do not need to send another chat message. Keep that
+Codex task active; an ended or cancelled task cannot be resumed by the page.
+Standalone CLI use emits the event but does not export a Markdown summary.
+
+Keep the terminal process running while using the window. **Ctrl+C** cancels
+waiting (exit 130) without a completion event; saved decisions are retained.
+Closing an unsaved tab does not complete the review or record a skip.
+The server listens only on `127.0.0.1`, uses a randomly assigned port
 and a session token, and prints the complete URL. If WSL cannot open your browser,
 paste that URL into your Windows browser, or use `--no-browser` when launching
 through an agent. This URL is usable only while that server is running.

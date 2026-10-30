@@ -7,6 +7,8 @@ const message = document.querySelector("#save-message");
 const choices = new Map();
 const rows = new Map();
 let saving = false;
+let loaded = false;
+let finished = false;
 
 const sourceNames = {
   arxiv: "arXiv", nature: "Nature Communications", "nature-journal": "Nature",
@@ -25,10 +27,10 @@ function element(tag, className, text) {
 function updateSummary() {
   const accepted = [...choices.values()].filter(value => value === "accepted").length;
   const skipped = choices.size - accepted;
-  document.querySelector("#selection-summary").textContent = choices.size
+  document.querySelector("#selection-summary").textContent = finished ? "Review complete" : choices.size
     ? `${accepted} to accept · ${skipped} to skip`
     : "No unsaved decisions";
-  saveButton.disabled = saving || choices.size === 0;
+  saveButton.disabled = saving || !loaded || finished;
 }
 
 function markSaved(id, decision) {
@@ -110,6 +112,8 @@ async function loadPapers() {
     document.querySelector("#total").textContent = data.papers.length;
     papersElement.replaceChildren(...data.papers.map(renderPaper));
     if (!data.papers.length) papersElement.append(element("p", "empty", "No pending papers to review."));
+    loaded = true;
+    updateSummary();
   } catch (error) {
     papersElement.replaceChildren();
     const notice = document.querySelector("#load-error");
@@ -119,7 +123,7 @@ async function loadPapers() {
 }
 
 saveButton.addEventListener("click", async () => {
-  if (saving || !choices.size) return;
+  if (saving || !loaded || finished) return;
   saving = true;
   updateSummary();
   rows.forEach(row => row.querySelectorAll("input").forEach(input => { input.disabled = true; }));
@@ -130,20 +134,25 @@ saveButton.addEventListener("click", async () => {
     const response = await fetch("/api/decisions", {
       method: "POST",
       headers: {"Content-Type": "application/json", "X-Review-Token": token},
-      body: JSON.stringify({decisions}),
+      body: JSON.stringify({decisions, finish: true}),
     });
     const data = await response.json();
     (data.saved || []).forEach(item => markSaved(item.id, item.decision));
     if (!response.ok) throw new Error(`${data.saved?.length || 0} decisions confirmed. ${data.error}`);
-    const pending = [...rows.values()].filter(row => row.dataset.saved !== "true").length;
-    message.textContent = `Saved ${data.saved.length} decisions. ${pending} papers in this review remain pending.`;
+    if (data.completion?.event !== "paper_review_completed") throw new Error("Review completion was not confirmed.");
+    finished = true;
+    choices.clear();
+    const result = data.completion;
+    message.textContent = `${result.accepted.length} accepted · ${result.skipped.length} skipped · ${result.pending.length} pending. Review complete; you can close this window.`;
+    saveButton.textContent = "Review complete";
+    setTimeout(() => window.close(), 800);
   } catch (error) {
     message.dataset.error = "true";
     message.textContent = `Save not fully confirmed. ${error.message} Unsaved choices are kept here; retry after resolving the problem.`;
   } finally {
     saving = false;
     rows.forEach(row => {
-      if (row.dataset.saved !== "true") row.querySelectorAll("input").forEach(input => { input.disabled = false; });
+      if (!finished && row.dataset.saved !== "true") row.querySelectorAll("input").forEach(input => { input.disabled = false; });
     });
     updateSummary();
   }

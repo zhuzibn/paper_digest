@@ -10,6 +10,7 @@ from unittest.mock import Mock
 import pytest
 
 from paper_digest import runner
+from paper_digest import review_web
 from paper_digest.models import Paper
 from paper_digest.review_web import ReviewServer
 from paper_digest.storage import PaperStorage
@@ -59,9 +60,13 @@ def _request(
         connection.close()
 
 
-def _save(server: ReviewServer, choices: list[dict[str, str]]) -> tuple[int, dict]:
+def _save(
+    server: ReviewServer, choices: list[dict[str, str]], finish: bool = False,
+) -> tuple[int, dict]:
     """Submit a batch and decode the server's acknowledgement."""
-    status, body = _request(server, "POST", "/api/decisions", {"decisions": choices})
+    status, body = _request(server, "POST", "/api/decisions", {
+        "decisions": choices, "finish": finish,
+    })
     return status, json.loads(body)
 
 
@@ -184,11 +189,89 @@ def test_write_failure_reports_only_completed_decisions(
 
     monkeypatch.setattr(PaperStorage, "decide", fail_second)
     choices = [{"id": first, "decision": "accepted"}, {"id": second, "decision": "skipped"}]
-    status, result = _save(review_server, choices)
+    status, result = _save(review_server, choices, finish=True)
     assert status == 409 and result["saved"] == choices[:1]
     records = PaperStorage(review_server.state_file).state["papers"]
     assert records[first]["decision"] == "accepted"
     assert records[second]["decision"] == "pending"
+    assert review_server.completion is None
+    assert _request(review_server)[0] == 200
+    monkeypatch.setattr(PaperStorage, "decide", original_decide)
+    status, result = _save(review_server, choices, finish=True)
+    assert status == 200
+    assert result["completion"]["accepted"] == [first]
+    assert result["completion"]["skipped"] == [second]
+    assert len(PaperStorage(review_server.state_file).state["papers"][first]["decisions"]) == 1
+
+
+def test_finish_reports_only_session_ids(review_server: ReviewServer) -> None:
+    """A successful finish acknowledges mixed choices and the undecided paper."""
+    first, second, third = review_server.paper_ids
+    status, result = _save(review_server, [
+        {"id": first, "decision": "accepted"}, {"id": second, "decision": "skipped"},
+    ], finish=True)
+    assert status == 200
+    assert result["completion"] == review_server.completion == {
+        "event": "paper_review_completed", "accepted": [first],
+        "skipped": [second], "pending": [third],
+    }
+
+
+def test_finish_without_choices_preserves_ledger(review_server: ReviewServer) -> None:
+    """Finishing with everything pending creates no decisions or ledger writes."""
+    original = review_server.state_file.read_bytes()
+    status, result = _save(review_server, [], finish=True)
+    assert status == 200 and result["saved"] == []
+    assert result["completion"]["pending"] == review_server.paper_ids
+    assert review_server.state_file.read_bytes() == original
+
+
+@pytest.mark.parametrize("finish", ["true", 1, None])
+def test_invalid_finish_never_saves(review_server: ReviewServer, finish: object) -> None:
+    """Only a boolean finish flag can terminate a review."""
+    original = review_server.state_file.read_bytes()
+    status, _ = _request(review_server, "POST", "/api/decisions", {
+        "finish": finish,
+        "decisions": [{"id": review_server.paper_ids[0], "decision": "accepted"}],
+    })
+    assert status == 400
+    assert review_server.completion is None
+    assert review_server.state_file.read_bytes() == original
+
+
+def test_finish_with_missing_record_does_not_write(review_server: ReviewServer) -> None:
+    """A deleted scoped record prevents a misleading completion signal."""
+    storage = PaperStorage(review_server.state_file)
+    del storage.state["papers"][review_server.paper_ids[-1]]
+    storage.save()
+    original = review_server.state_file.read_bytes()
+    status, _ = _save(review_server, [
+        {"id": review_server.paper_ids[0], "decision": "accepted"},
+    ], finish=True)
+    assert status == 409 and review_server.completion is None
+    assert review_server.state_file.read_bytes() == original
+
+
+@pytest.mark.parametrize("interrupted", [False, True])
+def test_cli_completion_signal_and_exit_code(
+    review_server: ReviewServer, monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str], interrupted: bool,
+) -> None:
+    """Only a completed review emits the machine-readable success event."""
+    def stop(server: ReviewServer) -> None:
+        """Simulate the two ways the serving loop can return control."""
+        if interrupted:
+            raise KeyboardInterrupt
+        server.completion = review_web.ReviewCompletion(
+            event="paper_review_completed", accepted=[], skipped=[],
+            pending=server.paper_ids,
+        )
+
+    monkeypatch.setattr(ReviewServer, "serve_forever", stop)
+    code = review_web.serve_review(review_server.state_file, open_browser=False)
+    output = capsys.readouterr().out
+    assert code == (130 if interrupted else 0)
+    assert ("paper_review_completed" in output) is not interrupted
 
 
 def test_missing_state_stays_missing(tmp_path: Path) -> None:

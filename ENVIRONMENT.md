@@ -56,6 +56,9 @@ They share the digest's state lock; use one process/computer at a time.
 the pending-paper review window. It requires a browser and permission to bind
 `127.0.0.1`, but no external network access or additional dependencies. Use
 `--no-browser` to open the printed URL manually (including in Windows from WSL).
-Keep the server running during review; Ctrl+C stops it. Decisions are written
-only after **Save decisions** is clicked. Review HTTP tests also need loopback
+Keep the server running during review. **Save and finish review** saves explicit
+choices, emits `paper_review_completed`, and stops the server with exit 0.
+Ctrl+C cancels waiting with exit 130 and no completion event. The active
+`paper-tracker` agent waits for successful completion and refreshes the summary;
+the standalone server does not run an exporter. Review HTTP tests also need loopback
 socket access and use disposable ledgers, not the real tracking file.

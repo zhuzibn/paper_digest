@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-10-29
+
+- Add **Save and finish review**: after confirming saved decisions, the browser
+  closes when allowed and the server reports this session's choices and exits.
+  The waiting paper-tracker skill can verify choices and refresh its Markdown
+  summary without another chat message; pending items and failed-save retries
+  keep their existing behavior. Cancellation emits no success signal.
+
 ## 2026-10-28
 
 - Replace email delivery with persistent local paper review and explicit
